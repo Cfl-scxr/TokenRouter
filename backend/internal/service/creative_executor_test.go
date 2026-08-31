@@ -177,6 +177,24 @@ func TestCreativeGrokDefaultImageCandidatesWithQualityWhitelist(t *testing.T) {
 	require.Equal(t, []string{"grok-imagine-image-quality"}, models)
 }
 
+// TestCreativeMappedFinalModelCapability 确保文本请求别名映射到图片模型时按最终模型校验。
+func TestCreativeMappedFinalModelCapability(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Credentials: map[string]any{
+			"model_mapping":   map[string]any{"draw-alias": "gpt-image-2", "text-alias": "gpt-5.4"},
+			"model_whitelist": []string{"gpt-image-2", "gpt-5.4"},
+		},
+	}
+	models := creativeExpandAccountModels(account, []string{"draw-alias", "text-alias"}, IsGPTImageGenerationModel)
+	// 候选集合没有映射 key 时仍应纳入显式映射的 requested alias。
+	require.NotContains(t, models, "text-alias")
+	// 反向映射目标为图片模型的别名必须被保留。
+	account.Credentials["model_mapping"] = map[string]any{"draw-alias": "gpt-image-2"}
+	models = creativeExpandAccountModels(account, []string{"draw-alias"}, IsGPTImageGenerationModel)
+	require.Equal(t, []string{"draw-alias"}, models)
+}
+
 // TestCreativeGrokConfiguredImageWhitelistCandidates 校验代理侧图片模型变体能从显式白名单进入候选。
 func TestCreativeGrokConfiguredImageWhitelistCandidates(t *testing.T) {
 	account := &Account{
@@ -315,12 +333,18 @@ func TestBuildCreativeOpenAIRequestBody(t *testing.T) {
 	var generateBody map[string]any
 	require.NoError(t, json.Unmarshal(body, &generateBody))
 	require.Equal(t, "gpt-image-2", generateBody["model"])
-	require.Equal(t, "b64_json", generateBody["response_format"])
+	require.NotContains(t, generateBody, "response_format")
 	require.Equal(t, float64(1), generateBody["n"])
 	require.Equal(t, "high", generateBody["quality"])
 	require.Equal(t, "png", generateBody["output_format"])
 	require.NotContains(t, generateBody, "output_compression")
 	require.Equal(t, "opaque", generateBody["background"])
+	// DALL-E 仍使用旧版 response_format 契约。
+	dalleBody, _, err := buildCreativeOpenAIRequestBody(run, payload, "dall-e-3")
+	require.NoError(t, err)
+	var dalleJSON map[string]any
+	require.NoError(t, json.Unmarshal(dalleBody, &dalleJSON))
+	require.Equal(t, "b64_json", dalleJSON["response_format"])
 
 	// GPT Image 2 的 4K 横向尺寸使用真实的 3840x2160 像素值。
 	run = CreativeRun{Operation: CreativeOperationGenerate, ImageSize: "4K", AspectRatio: "16:9", RequestedOutputCount: 1}

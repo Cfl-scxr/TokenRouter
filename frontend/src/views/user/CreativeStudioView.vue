@@ -5,7 +5,7 @@
       ref="stageRef"
       class="relative -mx-4 -mb-4 -mt-4 h-[calc(100dvh-3.5rem)] md:-mx-6 md:-mb-6 md:-mt-5 lg:-mx-8 lg:-mb-8 lg:-mt-4"
     >
-      <CreativeCanvas ref="canvasRef" class="absolute inset-0" :operation="studio.operation.value" @error="onCanvasError" />
+      <CreativeCanvas ref="canvasRef" class="absolute inset-0" :operation="studio.operation.value" :allowed-mimes="studio.capabilities.value.allowed_mime_types" @error="onCanvasError" />
       <CreativeRunHistory :studio="studio" />
 
       <!-- 设置：左上角齿轮按钮，点击向下展开设置项 -->
@@ -155,6 +155,9 @@ interface StatusPill {
 const PILL_TONES: Record<string, string> = {
   queued: 'text-blue-700 dark:text-blue-300',
   running: 'text-amber-700 dark:text-amber-300',
+  provider_succeeded: 'text-amber-700 dark:text-amber-300',
+  settlement_pending: 'text-amber-700 dark:text-amber-300',
+  release_pending: 'text-orange-700 dark:text-orange-300',
   succeeded: 'text-green-700 dark:text-green-300',
   failed: 'text-red-700 dark:text-red-300',
   cancelled: 'text-gray-600 dark:text-dark-300',
@@ -164,10 +167,10 @@ const PILL_TONES: Record<string, string> = {
 
 const pillState = computed<StatusPill | null>(() => {
   // 并发生成时当前任务可能已完成，优先显示历史中仍在执行的任务状态。
-  const activeRun = studio.runHistory.value.find((run) => run.status === 'queued' || run.status === 'running')
+  const activeRun = studio.runHistory.value.find((run) => !CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status))
   if (studio.polling.value || studio.busy.value) {
     const status = activeRun?.status ?? studio.currentRun.value?.status
-    const phase = status === 'running' ? 'running' : status === 'queued' ? 'queued' : 'submitting'
+    const phase = status && PILL_TONES[status] ? status : 'submitting'
     return {
       text: t(`creative.status.${phase}`),
       spinning: true,

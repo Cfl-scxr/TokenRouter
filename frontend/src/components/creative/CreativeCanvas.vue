@@ -25,7 +25,7 @@
       <input
         ref="fileInputRef"
         type="file"
-        accept="image/png,image/jpeg,image/webp"
+        :accept="props.allowedMimes.join(',')"
         multiple
         class="hidden"
         @change="onFilesPicked"
@@ -206,13 +206,17 @@ import {
 interface Props {
   // 当前操作：局部重绘时启用画笔组并在选中图片后自动进入涂抹模式
   operation: CreativeOperation
+  // 从服务端能力接口注入的文件 MIME 白名单
+  allowedMimes?: string[]
 }
 
 interface Emits {
   (e: 'error', message: string): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  allowedMimes: () => ['image/png', 'image/jpeg', 'image/webp'],
+})
 const emit = defineEmits<Emits>()
 const { t } = useI18n()
 
@@ -1497,7 +1501,7 @@ async function getEditRefBlobs(): Promise<Blob[]> {
 }
 
 // 导出 mask：选中图片 → 独立 mask 画布切到单位阵视口
-// → 展示色笔迹临时改回纯白 → toCanvasElement 裁剪 → 离屏拉伸到原图自然尺寸 → 透明底 PNG
+// → 展示色笔迹临时改回纯白 → toCanvasElement 裁剪 → 离屏铺不透明底并清除笔迹 → PNG
 async function getMaskBlob(): Promise<Blob | null> {
   if (!canvas || !maskCanvas) return null
   const image = selectedImageObject()
@@ -1506,7 +1510,7 @@ async function getMaskBlob(): Promise<Blob | null> {
   if (!maskObjects.length) return null
 
   const rect = image.getBoundingRect()
-  // 展示用紫色叠加层，导出必须是不透明的纯白轨迹：渲染前统一改色，结束后恢复
+  // 展示用紫色叠加层，导出先统一改为纯白轨迹，结束后恢复原样。
   const styleBackup = maskObjects.map((object) => ({ object, fill: object.fill, stroke: object.stroke }))
   styleBackup.forEach(({ object }) => {
     object.set({
@@ -1544,7 +1548,13 @@ async function getMaskBlob(): Promise<Blob | null> {
   offscreen.height = naturalHeight
   const context = offscreen.getContext('2d')
   if (!context) return null
+  // OpenAI mask 约定 alpha=0 的透明区域为重绘区域；因此先铺不透明底，
+  // 再用用户笔迹做 destination-out 清除，保证用户涂抹的区域透明。
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, naturalWidth, naturalHeight)
+  context.globalCompositeOperation = 'destination-out'
   context.drawImage(element, 0, 0, naturalWidth, naturalHeight)
+  context.globalCompositeOperation = 'source-over'
   return await new Promise<Blob | null>((resolve) => offscreen.toBlob(resolve, 'image/png'))
 }
 
@@ -1736,7 +1746,8 @@ async function restoreScene(generation: number): Promise<void> {
 // 选择文件后全部进入裁剪队列
 function onFilesPicked(event: Event): void {
   const input = event.target as HTMLInputElement
-  const files = Array.from(input.files ?? []).filter((file) => file.type.startsWith('image/'))
+  const allowedMIMEs = new Set(props.allowedMimes.map((mime) => mime.toLowerCase()))
+  const files = Array.from(input.files ?? []).filter((file) => allowedMIMEs.has(file.type.toLowerCase()))
   input.value = ''
   if (!files.length) return
   cropQueue.value = [...cropQueue.value, ...files]

@@ -38,6 +38,8 @@ type Tx struct {
 	BatchImageJob *BatchImageJobClient
 	// CreativeRun is the client for interacting with the CreativeRun builders.
 	CreativeRun *CreativeRunClient
+	// CreativeRunOutbox is the client for interacting with the CreativeRunOutbox builders.
+	CreativeRunOutbox *CreativeRunOutboxClient
 	// CreativeRunOutput is the client for interacting with the CreativeRunOutput builders.
 	CreativeRunOutput *CreativeRunOutputClient
 	// DataShareSession is the client for interacting with the DataShareSession builders.
@@ -247,6 +249,7 @@ func (tx *Tx) init() {
 	tx.BatchImageItem = NewBatchImageItemClient(tx.config)
 	tx.BatchImageJob = NewBatchImageJobClient(tx.config)
 	tx.CreativeRun = NewCreativeRunClient(tx.config)
+	tx.CreativeRunOutbox = NewCreativeRunOutboxClient(tx.config)
 	tx.CreativeRunOutput = NewCreativeRunOutputClient(tx.config)
 	tx.DataShareSession = NewDataShareSessionClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)

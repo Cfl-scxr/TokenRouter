@@ -140,6 +140,26 @@ func TestCreativeWorkerSuccessPath(t *testing.T) {
 	require.Equal(t, 0, f.billing.releaseN)
 }
 
+// TestCreativeWorkerRecoversPersistedProviderOutput 验证输出元数据已落库但状态写入失败时不重复调用 provider。
+func TestCreativeWorkerRecoversPersistedProviderOutput(t *testing.T) {
+	f := newCreativeWorkerFixture()
+	runID := "crun_workerrecover01"
+	seedCreativeRun(f, runID, false)
+	run := f.repo.runs[runID]
+	run.Status = CreativeRunStatusRunning
+	accountID := int64(55)
+	run.AccountID = &accountID
+	f.repo.outputs[runID][0].Status = CreativeRunOutputStatusSucceeded
+	f.store.outputs[runID+":0"] = []byte("img")
+
+	result, err := f.worker.process(context.Background(), runID)
+	require.NoError(t, err)
+	require.True(t, result.Terminal)
+	require.Equal(t, 0, f.exec.calls)
+	require.Equal(t, CreativeRunStatusSucceeded, f.repo.runs[runID].Status)
+	require.Equal(t, 1, f.billing.captureN)
+}
+
 // TestCreativeWorkerUserConcurrencyPending 验证用户槽位未获取时任务保持 queued 并释放 worker。
 func TestCreativeWorkerUserConcurrencyPending(t *testing.T) {
 	f := newCreativeWorkerFixture()

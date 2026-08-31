@@ -40,8 +40,41 @@ local jobs = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", ARGV[1], "LIMIT", 0, A
 for _, job in ipairs(jobs) do
   redis.call("ZREM", KEYS[1], job)
   redis.call("LPUSH", KEYS[2], job)
+  redis.call("DEL", KEYS[3] .. job)
 end
 return #jobs
+`)
+
+var creativeAckScript = redis.NewScript(`
+if redis.call("ZSCORE", KEYS[1], ARGV[1]) and redis.call("GET", KEYS[3] .. ARGV[1]) == ARGV[2] then
+  redis.call("ZREM", KEYS[1], ARGV[1])
+  redis.call("ZREM", KEYS[2], ARGV[1])
+  redis.call("DEL", KEYS[3] .. ARGV[1])
+  return 1
+end
+return 0
+`)
+
+var creativeRequeueScript = redis.NewScript(`
+if redis.call("ZSCORE", KEYS[1], ARGV[1]) and redis.call("GET", KEYS[3] .. ARGV[1]) == ARGV[2] then
+  redis.call("ZREM", KEYS[1], ARGV[1])
+  redis.call("ZREM", KEYS[2], ARGV[1])
+  if tonumber(ARGV[4]) <= 0 then
+    redis.call("LPUSH", KEYS[4], ARGV[1])
+  else
+    redis.call("ZADD", KEYS[2], ARGV[3], ARGV[1])
+  end
+  return 1
+end
+return 0
+`)
+
+var creativeHeartbeatScript = redis.NewScript(`
+if redis.call("ZSCORE", KEYS[1], ARGV[1]) and redis.call("GET", KEYS[2] .. ARGV[1]) == ARGV[2] then
+  redis.call("ZADD", KEYS[1], ARGV[3], ARGV[1])
+  return 1
+end
+return 0
 `)
 
 var creativeReleaseLockScript = redis.NewScript(`
@@ -67,6 +100,7 @@ if not job then
   return nil
 end
 redis.call("ZADD", KEYS[2], ARGV[1], job)
+redis.call("SET", KEYS[3] .. job, ARGV[2], "PX", ARGV[3])
 return job
 `)
 
@@ -150,9 +184,9 @@ func (q *creativeQueue) Enqueue(ctx context.Context, runID string) error {
 func (q *creativeQueue) Reserve(ctx context.Context, blockTimeout time.Duration) (service.ReservedCreativeRun, error) {
 	deadline := time.Now().Add(blockTimeout)
 	for {
-		runID, err := q.reserveOnce(ctx)
+		runID, leaseToken, err := q.reserveOnce(ctx)
 		if err == nil {
-			return service.ReservedCreativeRun{RunID: runID}, nil
+			return service.ReservedCreativeRun{RunID: runID, LeaseToken: leaseToken}, nil
 		}
 		if !errors.Is(err, service.ErrCreativeQueueEmpty) {
 			return service.ReservedCreativeRun{}, err
@@ -175,13 +209,17 @@ func (q *creativeQueue) Reserve(ctx context.Context, blockTimeout time.Duration)
 	}
 }
 
-func (q *creativeQueue) reserveOnce(ctx context.Context) (string, error) {
-	raw, err := creativeReserveScript.Run(ctx, q.rdb, []string{q.readyKey, q.activeKey}, time.Now().UnixMilli()).Result()
+func (q *creativeQueue) reserveOnce(ctx context.Context) (string, string, error) {
+	leaseToken, err := newCreativeLockToken()
+	if err != nil {
+		return "", "", err
+	}
+	raw, err := creativeReserveScript.Run(ctx, q.rdb, []string{q.readyKey, q.activeKey, q.inflightPrefix}, time.Now().UnixMilli(), leaseToken, q.inflightTTL.Milliseconds()).Result()
 	if errors.Is(err, redis.Nil) {
-		return "", service.ErrCreativeQueueEmpty
+		return "", "", service.ErrCreativeQueueEmpty
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	runID, ok := raw.(string)
 	if !ok || !service.IsValidCreativeRunID(runID) {
@@ -189,53 +227,65 @@ func (q *creativeQueue) reserveOnce(ctx context.Context) (string, error) {
 		// 无限重投回 ready。
 		if ok && runID != "" {
 			_ = q.rdb.ZRem(ctx, q.activeKey, runID).Err()
+			_ = q.rdb.Del(ctx, q.inflightKey(runID)).Err()
 		}
-		return "", service.ErrInvalidCreativeQueuePayload
+		return "", "", service.ErrInvalidCreativeQueuePayload
 	}
-	return runID, nil
+	return runID, leaseToken, nil
 }
 
-func (q *creativeQueue) RequeueAfter(ctx context.Context, runID string, delay time.Duration) error {
+func (q *creativeQueue) RequeueAfter(ctx context.Context, runID, leaseToken string, delay time.Duration) error {
 	if !service.IsValidCreativeRunID(runID) {
 		return service.ErrInvalidCreativeQueuePayload
 	}
-	pipe := q.rdb.TxPipeline()
-	pipe.ZRem(ctx, q.activeKey, runID)
-	pipe.ZRem(ctx, q.delayedKey, runID)
-	if delay <= 0 {
-		pipe.LPush(ctx, q.readyKey, runID)
-	} else {
-		pipe.ZAdd(ctx, q.delayedKey, redis.Z{
-			Score:  float64(time.Now().Add(delay).UnixMilli()),
-			Member: runID,
-		})
+	if leaseToken == "" {
+		return service.ErrCreativeLeaseLost
 	}
-	_, err := pipe.Exec(ctx)
-	return err
+	result, err := creativeRequeueScript.Run(ctx, q.rdb,
+		[]string{q.activeKey, q.delayedKey, q.inflightPrefix, q.readyKey},
+		runID, leaseToken, time.Now().Add(delay).UnixMilli(), delay.Milliseconds()).Int()
+	if err != nil {
+		return err
+	}
+	if result == 0 {
+		return service.ErrCreativeLeaseLost
+	}
+	return nil
 }
 
-func (q *creativeQueue) Ack(ctx context.Context, runID string) error {
+func (q *creativeQueue) Ack(ctx context.Context, runID, leaseToken string) error {
 	if !service.IsValidCreativeRunID(runID) {
 		return service.ErrInvalidCreativeQueuePayload
 	}
-	pipe := q.rdb.TxPipeline()
-	pipe.ZRem(ctx, q.activeKey, runID)
-	pipe.ZRem(ctx, q.delayedKey, runID)
-	pipe.Del(ctx, q.inflightKey(runID))
-	_, err := pipe.Exec(ctx)
-	return err
+	if leaseToken == "" {
+		return service.ErrCreativeLeaseLost
+	}
+	result, err := creativeAckScript.Run(ctx, q.rdb,
+		[]string{q.activeKey, q.delayedKey, q.inflightPrefix}, runID, leaseToken).Int()
+	if err != nil {
+		return err
+	}
+	if result == 0 {
+		return service.ErrCreativeLeaseLost
+	}
+	return nil
 }
 
-func (q *creativeQueue) Heartbeat(ctx context.Context, runID string) error {
+func (q *creativeQueue) Heartbeat(ctx context.Context, runID, leaseToken string) (bool, error) {
 	if !service.IsValidCreativeRunID(runID) {
-		return service.ErrInvalidCreativeQueuePayload
+		return false, service.ErrInvalidCreativeQueuePayload
+	}
+	if leaseToken == "" {
+		return false, service.ErrCreativeLeaseLost
 	}
 	// XX：只刷新已存在的 active 成员。无条件 ZAdd 会在 Ack/Requeue 之后的
 	// 竞态心跳里把幽灵成员塞回 active zset。
-	return q.rdb.ZAddXX(ctx, q.activeKey, redis.Z{
-		Score:  float64(time.Now().UnixMilli()),
-		Member: runID,
-	}).Err()
+	result, err := creativeHeartbeatScript.Run(ctx, q.rdb,
+		[]string{q.activeKey, q.inflightPrefix}, runID, leaseToken, time.Now().UnixMilli()).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
 }
 
 func (q *creativeQueue) MoveDueDelayedToReady(ctx context.Context, limit int) (int, error) {
@@ -253,7 +303,7 @@ func (q *creativeQueue) RecoverStaleActive(ctx context.Context, staleAfter time.
 		limit = 100
 	}
 	cutoff := time.Now().Add(-staleAfter).UnixMilli()
-	return creativeRecoverStaleActiveScript.Run(ctx, q.rdb, []string{q.activeKey, q.readyKey}, cutoff, limit).Int()
+	return creativeRecoverStaleActiveScript.Run(ctx, q.rdb, []string{q.activeKey, q.readyKey, q.inflightPrefix}, cutoff, limit).Int()
 }
 
 func (q *creativeQueue) TryAcquireJobLock(ctx context.Context, runID string, ttl time.Duration) (service.CreativeRunJobLock, bool, error) {
@@ -300,14 +350,15 @@ func (l *creativeRedisJobLock) Release(ctx context.Context) error {
 }
 
 // Refresh 在仍持有锁（token 匹配）时续期 TTL，供长处理任务的心跳调用。
-func (l *creativeRedisJobLock) Refresh(ctx context.Context, ttl time.Duration) error {
+func (l *creativeRedisJobLock) Refresh(ctx context.Context, ttl time.Duration) (bool, error) {
 	if l == nil || l.rdb == nil || l.key == "" || l.token == "" {
-		return nil
+		return false, nil
 	}
 	if ttl <= 0 {
 		ttl = defaultCreativeJobLockTTL
 	}
-	return creativeRefreshLockScript.Run(ctx, l.rdb, []string{l.key}, l.token, ttl.Milliseconds()).Err()
+	result, err := creativeRefreshLockScript.Run(ctx, l.rdb, []string{l.key}, l.token, ttl.Milliseconds()).Int()
+	return result == 1, err
 }
 
 var _ service.CreativeRunQueue = (*creativeQueue)(nil)

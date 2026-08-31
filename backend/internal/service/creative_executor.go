@@ -43,7 +43,19 @@ func creativeNonRetryableError(format string, args ...any) *CreativeUpstreamErro
 // creativeHTTPStatusError 把上游 HTTP 状态码映射为可重试性：网络层错误、429 与 5xx 可重试，其余 4xx 不可重试。
 func creativeHTTPStatusError(statusCode int, message string) *CreativeUpstreamError {
 	retryable := statusCode == 0 || statusCode == http.StatusTooManyRequests || statusCode >= 500
-	return &CreativeUpstreamError{StatusCode: statusCode, Message: sanitizeCreativeMessage(message), Retryable: retryable}
+	// 上游 body 可能回显 prompt、内部 URL 或认证信息；对外只保留稳定的状态类消息。
+	publicMessage := "creative provider request failed"
+	switch {
+	case statusCode == 0:
+		publicMessage = "creative provider connection failed"
+	case statusCode == http.StatusTooManyRequests:
+		publicMessage = "creative provider rate limited"
+	case statusCode >= 500:
+		publicMessage = "creative provider unavailable"
+	case statusCode >= 400:
+		publicMessage = "creative provider rejected request"
+	}
+	return &CreativeUpstreamError{StatusCode: statusCode, Message: publicMessage, Retryable: retryable}
 }
 
 // IsRetryableCreativeError 判断错误是否值得 worker 有限重试。
@@ -158,12 +170,32 @@ func (e *CreativeExecutor) Prepare(ctx context.Context, run CreativeRun) (*Creat
 		}
 		return nil, creativeNonRetryableError("creative account %d has no upstream model for %s", selection.Account.ID, run.Model)
 	}
+	// 账号/渠道映射后必须再次校验最终模型能力，避免文本模型别名被错误送入图片执行器。
+	if !creativePlatformImageModel(platform, upstreamModel) {
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+		return nil, creativeNonRetryableError("creative mapped model %s is not an image model", upstreamModel)
+	}
 	return &CreativeExecution{
 		Account:       selection.Account,
 		UpstreamModel: upstreamModel,
 		Selection:     selection,
 		ReleaseFunc:   selection.ReleaseFunc,
 	}, nil
+}
+
+func creativePlatformImageModel(platform, model string) bool {
+	switch platform {
+	case PlatformOpenAI:
+		return IsGPTImageGenerationModel(model)
+	case PlatformGrok:
+		return isGrokImageGenerationModel(model)
+	case PlatformGemini:
+		return isCreativeGeminiImageModel(model)
+	default:
+		return false
+	}
 }
 
 // Execute 使用 Prepare 返回的账号上下文调用上游。

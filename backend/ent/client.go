@@ -27,6 +27,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/batchimageitem"
 	"github.com/TokenFlux/TokenRouter/ent/batchimagejob"
 	"github.com/TokenFlux/TokenRouter/ent/creativerun"
+	"github.com/TokenFlux/TokenRouter/ent/creativerunoutbox"
 	"github.com/TokenFlux/TokenRouter/ent/creativerunoutput"
 	"github.com/TokenFlux/TokenRouter/ent/datasharesession"
 	"github.com/TokenFlux/TokenRouter/ent/errorpassthroughrule"
@@ -93,6 +94,8 @@ type Client struct {
 	BatchImageJob *BatchImageJobClient
 	// CreativeRun is the client for interacting with the CreativeRun builders.
 	CreativeRun *CreativeRunClient
+	// CreativeRunOutbox is the client for interacting with the CreativeRunOutbox builders.
+	CreativeRunOutbox *CreativeRunOutboxClient
 	// CreativeRunOutput is the client for interacting with the CreativeRunOutput builders.
 	CreativeRunOutput *CreativeRunOutputClient
 	// DataShareSession is the client for interacting with the DataShareSession builders.
@@ -182,6 +185,7 @@ func (c *Client) init() {
 	c.BatchImageItem = NewBatchImageItemClient(c.config)
 	c.BatchImageJob = NewBatchImageJobClient(c.config)
 	c.CreativeRun = NewCreativeRunClient(c.config)
+	c.CreativeRunOutbox = NewCreativeRunOutboxClient(c.config)
 	c.CreativeRunOutput = NewCreativeRunOutputClient(c.config)
 	c.DataShareSession = NewDataShareSessionClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
@@ -319,6 +323,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		BatchImageItem:           NewBatchImageItemClient(cfg),
 		BatchImageJob:            NewBatchImageJobClient(cfg),
 		CreativeRun:              NewCreativeRunClient(cfg),
+		CreativeRunOutbox:        NewCreativeRunOutboxClient(cfg),
 		CreativeRunOutput:        NewCreativeRunOutputClient(cfg),
 		DataShareSession:         NewDataShareSessionClient(cfg),
 		ErrorPassthroughRule:     NewErrorPassthroughRuleClient(cfg),
@@ -383,6 +388,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		BatchImageItem:           NewBatchImageItemClient(cfg),
 		BatchImageJob:            NewBatchImageJobClient(cfg),
 		CreativeRun:              NewCreativeRunClient(cfg),
+		CreativeRunOutbox:        NewCreativeRunOutboxClient(cfg),
 		CreativeRunOutput:        NewCreativeRunOutputClient(cfg),
 		DataShareSession:         NewDataShareSessionClient(cfg),
 		ErrorPassthroughRule:     NewErrorPassthroughRuleClient(cfg),
@@ -447,13 +453,13 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.APIKeyCompositeGroup, c.Account, c.AccountGroup, c.Announcement,
 		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent,
-		c.BatchImageItem, c.BatchImageJob, c.CreativeRun, c.CreativeRunOutput,
-		c.DataShareSession, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.TLSFingerprintRouter, c.Team,
-		c.TeamInvitation, c.TeamMembership, c.TeamOwnershipTransfer,
+		c.BatchImageItem, c.BatchImageJob, c.CreativeRun, c.CreativeRunOutbox,
+		c.CreativeRunOutput, c.DataShareSession, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret,
+		c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile, c.TLSFingerprintRouter,
+		c.Team, c.TeamInvitation, c.TeamMembership, c.TeamOwnershipTransfer,
 		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
 		c.UserAttributeDefinition, c.UserAttributeValue, c.UserDisabledPublicGroup,
 		c.UserPlatformQuota, c.UserSubscription,
@@ -468,13 +474,13 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.APIKeyCompositeGroup, c.Account, c.AccountGroup, c.Announcement,
 		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent,
-		c.BatchImageItem, c.BatchImageJob, c.CreativeRun, c.CreativeRunOutput,
-		c.DataShareSession, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
-		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret, c.Setting,
-		c.SubscriptionPlan, c.TLSFingerprintProfile, c.TLSFingerprintRouter, c.Team,
-		c.TeamInvitation, c.TeamMembership, c.TeamOwnershipTransfer,
+		c.BatchImageItem, c.BatchImageJob, c.CreativeRun, c.CreativeRunOutbox,
+		c.CreativeRunOutput, c.DataShareSession, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
+		c.PaymentOrder, c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode,
+		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.RedeemCodeUsage, c.SecuritySecret,
+		c.Setting, c.SubscriptionPlan, c.TLSFingerprintProfile, c.TLSFingerprintRouter,
+		c.Team, c.TeamInvitation, c.TeamMembership, c.TeamOwnershipTransfer,
 		c.UsageCleanupTask, c.UsageLog, c.User, c.UserAllowedGroup,
 		c.UserAttributeDefinition, c.UserAttributeValue, c.UserDisabledPublicGroup,
 		c.UserPlatformQuota, c.UserSubscription,
@@ -510,6 +516,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.BatchImageJob.mutate(ctx, m)
 	case *CreativeRunMutation:
 		return c.CreativeRun.mutate(ctx, m)
+	case *CreativeRunOutboxMutation:
+		return c.CreativeRunOutbox.mutate(ctx, m)
 	case *CreativeRunOutputMutation:
 		return c.CreativeRunOutput.mutate(ctx, m)
 	case *DataShareSessionMutation:
@@ -2481,6 +2489,139 @@ func (c *CreativeRunClient) mutate(ctx context.Context, m *CreativeRunMutation) 
 		return (&CreativeRunDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown CreativeRun mutation op: %q", m.Op())
+	}
+}
+
+// CreativeRunOutboxClient is a client for the CreativeRunOutbox schema.
+type CreativeRunOutboxClient struct {
+	config
+}
+
+// NewCreativeRunOutboxClient returns a client for the CreativeRunOutbox from the given config.
+func NewCreativeRunOutboxClient(c config) *CreativeRunOutboxClient {
+	return &CreativeRunOutboxClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `creativerunoutbox.Hooks(f(g(h())))`.
+func (c *CreativeRunOutboxClient) Use(hooks ...Hook) {
+	c.hooks.CreativeRunOutbox = append(c.hooks.CreativeRunOutbox, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `creativerunoutbox.Intercept(f(g(h())))`.
+func (c *CreativeRunOutboxClient) Intercept(interceptors ...Interceptor) {
+	c.inters.CreativeRunOutbox = append(c.inters.CreativeRunOutbox, interceptors...)
+}
+
+// Create returns a builder for creating a CreativeRunOutbox entity.
+func (c *CreativeRunOutboxClient) Create() *CreativeRunOutboxCreate {
+	mutation := newCreativeRunOutboxMutation(c.config, OpCreate)
+	return &CreativeRunOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of CreativeRunOutbox entities.
+func (c *CreativeRunOutboxClient) CreateBulk(builders ...*CreativeRunOutboxCreate) *CreativeRunOutboxCreateBulk {
+	return &CreativeRunOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CreativeRunOutboxClient) MapCreateBulk(slice any, setFunc func(*CreativeRunOutboxCreate, int)) *CreativeRunOutboxCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CreativeRunOutboxCreateBulk{err: fmt.Errorf("calling to CreativeRunOutboxClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CreativeRunOutboxCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CreativeRunOutboxCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for CreativeRunOutbox.
+func (c *CreativeRunOutboxClient) Update() *CreativeRunOutboxUpdate {
+	mutation := newCreativeRunOutboxMutation(c.config, OpUpdate)
+	return &CreativeRunOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CreativeRunOutboxClient) UpdateOne(_m *CreativeRunOutbox) *CreativeRunOutboxUpdateOne {
+	mutation := newCreativeRunOutboxMutation(c.config, OpUpdateOne, withCreativeRunOutbox(_m))
+	return &CreativeRunOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CreativeRunOutboxClient) UpdateOneID(id int64) *CreativeRunOutboxUpdateOne {
+	mutation := newCreativeRunOutboxMutation(c.config, OpUpdateOne, withCreativeRunOutboxID(id))
+	return &CreativeRunOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for CreativeRunOutbox.
+func (c *CreativeRunOutboxClient) Delete() *CreativeRunOutboxDelete {
+	mutation := newCreativeRunOutboxMutation(c.config, OpDelete)
+	return &CreativeRunOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CreativeRunOutboxClient) DeleteOne(_m *CreativeRunOutbox) *CreativeRunOutboxDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CreativeRunOutboxClient) DeleteOneID(id int64) *CreativeRunOutboxDeleteOne {
+	builder := c.Delete().Where(creativerunoutbox.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CreativeRunOutboxDeleteOne{builder}
+}
+
+// Query returns a query builder for CreativeRunOutbox.
+func (c *CreativeRunOutboxClient) Query() *CreativeRunOutboxQuery {
+	return &CreativeRunOutboxQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCreativeRunOutbox},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a CreativeRunOutbox entity by its id.
+func (c *CreativeRunOutboxClient) Get(ctx context.Context, id int64) (*CreativeRunOutbox, error) {
+	return c.Query().Where(creativerunoutbox.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CreativeRunOutboxClient) GetX(ctx context.Context, id int64) *CreativeRunOutbox {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *CreativeRunOutboxClient) Hooks() []Hook {
+	return c.hooks.CreativeRunOutbox
+}
+
+// Interceptors returns the client interceptors.
+func (c *CreativeRunOutboxClient) Interceptors() []Interceptor {
+	return c.inters.CreativeRunOutbox
+}
+
+func (c *CreativeRunOutboxClient) mutate(ctx context.Context, m *CreativeRunOutboxMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CreativeRunOutboxCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CreativeRunOutboxUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CreativeRunOutboxUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CreativeRunOutboxDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown CreativeRunOutbox mutation op: %q", m.Op())
 	}
 }
 
@@ -7930,9 +8071,9 @@ type (
 	hooks struct {
 		APIKey, APIKeyCompositeGroup, Account, AccountGroup, Announcement,
 		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
-		BatchImageItem, BatchImageJob, CreativeRun, CreativeRunOutput,
-		DataShareSession, ErrorPassthroughRule, Group, IdempotencyRecord,
-		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		BatchImageItem, BatchImageJob, CreativeRun, CreativeRunOutbox,
+		CreativeRunOutput, DataShareSession, ErrorPassthroughRule, Group,
+		IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, RedeemCodeUsage, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, TLSFingerprintRouter, Team, TeamInvitation,
@@ -7943,9 +8084,9 @@ type (
 	inters struct {
 		APIKey, APIKeyCompositeGroup, Account, AccountGroup, Announcement,
 		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
-		BatchImageItem, BatchImageJob, CreativeRun, CreativeRunOutput,
-		DataShareSession, ErrorPassthroughRule, Group, IdempotencyRecord,
-		IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
+		BatchImageItem, BatchImageJob, CreativeRun, CreativeRunOutbox,
+		CreativeRunOutput, DataShareSession, ErrorPassthroughRule, Group,
+		IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog, PaymentOrder,
 		PaymentProviderInstance, PendingAuthSession, PromoCode, PromoCodeUsage, Proxy,
 		RedeemCode, RedeemCodeUsage, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, TLSFingerprintRouter, Team, TeamInvitation,

@@ -88,8 +88,9 @@ Usage cleanup 是管理员显式创建的持久任务，必须提供时间范围
 
 创作台（Creative Studio）把“任务事实”和“用户素材”显式分开，排查丢失或合规问题前先读[创作台](../domains/creative_studio.md)：
 
-- 素材不进入 PostgreSQL、备份或普通日志：原图、mask、生成图和 prompt 明文只存于 Redis 临时键（`creative:payload:`/`creative:input:`/`creative:mask:`/`creative:output:`），默认 TTL 30 分钟；PostgreSQL 只存 `creative_runs`/`creative_run_outputs` 元数据与 `prompt_hash`，备份因此不包含素材本体，恢复数据库也不会恢复图片。
-- ack 即删：客户端确认保存后服务端立即删除对应临时输出键；取消与失败路径尽力清理全部临时键。
+- 素材不进入 PostgreSQL、备份或普通日志：原图、mask、生成图和 prompt 明文只存于 Redis 临时键（`creative:payload:`/`creative:input:`/`creative:mask:`/`creative:output:`），默认 TTL 30 分钟；PostgreSQL 存 `creative_runs`/`creative_run_outputs` 元数据和 `creative_run_outbox` 动作，备份因此不包含素材本体，恢复数据库也不会恢复图片。
+- ack 即删：客户端确认保存后服务端先落 `acked` 元数据再删除对应临时输出键；删除失败由 transient cleanup reconciler 周期重试，取消与失败路径同样保留 `release_pending` 直到补偿完成。
+- 重点指标包括 `provider_succeeded`/`settlement_pending`/`release_pending` 数量、outbox lag、lease lost、结算/释放重试次数、`result_lost` 和 transient cleanup 失败；这些状态不能只依赖普通日志判断。
 - 结果丢失按 `result_lost` 处理：临时输出过期或缺失时任务从 `succeeded` 降级为 `result_lost`，绝不明示成功，也没有服务端恢复；上游已成功的丢失任务仍保留计费捕获和 `usage_logs`（`creative_settle:{run_id}`），未执行的丢失路径释放预占。
 - 计费与用量事实（hold/capture/release 幂等记录、`usage_logs`）属于普通资金与统计数据面，按本文其余章节的留存和清理规则处理，不随临时素材的 TTL 消失。
 

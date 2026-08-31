@@ -74,10 +74,24 @@ const (
 	FieldErrorCode = "error_code"
 	// FieldErrorMessage holds the string denoting the error_message field in the database.
 	FieldErrorMessage = "error_message"
+	// FieldReleaseTargetStatus holds the string denoting the release_target_status field in the database.
+	FieldReleaseTargetStatus = "release_target_status"
 	// FieldAttemptCount holds the string denoting the attempt_count field in the database.
 	FieldAttemptCount = "attempt_count"
 	// FieldAllowanceReserved holds the string denoting the allowance_reserved field in the database.
 	FieldAllowanceReserved = "allowance_reserved"
+	// FieldProvisioningPhase holds the string denoting the provisioning_phase field in the database.
+	FieldProvisioningPhase = "provisioning_phase"
+	// FieldProviderResultRecordedAt holds the string denoting the provider_result_recorded_at field in the database.
+	FieldProviderResultRecordedAt = "provider_result_recorded_at"
+	// FieldSettlementAttemptCount holds the string denoting the settlement_attempt_count field in the database.
+	FieldSettlementAttemptCount = "settlement_attempt_count"
+	// FieldReleaseAttemptCount holds the string denoting the release_attempt_count field in the database.
+	FieldReleaseAttemptCount = "release_attempt_count"
+	// FieldNextReconcileAt holds the string denoting the next_reconcile_at field in the database.
+	FieldNextReconcileAt = "next_reconcile_at"
+	// FieldLastReconcileError holds the string denoting the last_reconcile_error field in the database.
+	FieldLastReconcileError = "last_reconcile_error"
 	// FieldVersion holds the string denoting the version field in the database.
 	FieldVersion = "version"
 	// FieldStartedAt holds the string denoting the started_at field in the database.
@@ -123,8 +137,15 @@ var Columns = []string{
 	FieldPlanGroupRateMultiplierEnabled,
 	FieldErrorCode,
 	FieldErrorMessage,
+	FieldReleaseTargetStatus,
 	FieldAttemptCount,
 	FieldAllowanceReserved,
+	FieldProvisioningPhase,
+	FieldProviderResultRecordedAt,
+	FieldSettlementAttemptCount,
+	FieldReleaseAttemptCount,
+	FieldNextReconcileAt,
+	FieldLastReconcileError,
 	FieldVersion,
 	FieldStartedAt,
 	FieldCompletedAt,
@@ -200,10 +221,22 @@ var (
 	DefaultPlanGroupRateMultiplierEnabled bool
 	// ErrorCodeValidator is a validator for the "error_code" field. It is called by the builders before save.
 	ErrorCodeValidator func(string) error
+	// DefaultReleaseTargetStatus holds the default value on creation for the "release_target_status" field.
+	DefaultReleaseTargetStatus string
+	// ReleaseTargetStatusValidator is a validator for the "release_target_status" field. It is called by the builders before save.
+	ReleaseTargetStatusValidator func(string) error
 	// DefaultAttemptCount holds the default value on creation for the "attempt_count" field.
 	DefaultAttemptCount int
 	// DefaultAllowanceReserved holds the default value on creation for the "allowance_reserved" field.
 	DefaultAllowanceReserved bool
+	// DefaultProvisioningPhase holds the default value on creation for the "provisioning_phase" field.
+	DefaultProvisioningPhase string
+	// ProvisioningPhaseValidator is a validator for the "provisioning_phase" field. It is called by the builders before save.
+	ProvisioningPhaseValidator func(string) error
+	// DefaultSettlementAttemptCount holds the default value on creation for the "settlement_attempt_count" field.
+	DefaultSettlementAttemptCount int
+	// DefaultReleaseAttemptCount holds the default value on creation for the "release_attempt_count" field.
+	DefaultReleaseAttemptCount int
 	// DefaultVersion holds the default value on creation for the "version" field.
 	DefaultVersion int64
 )
@@ -361,6 +394,11 @@ func ByErrorMessage(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldErrorMessage, opts...).ToFunc()
 }
 
+// ByReleaseTargetStatus orders the results by the release_target_status field.
+func ByReleaseTargetStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReleaseTargetStatus, opts...).ToFunc()
+}
+
 // ByAttemptCount orders the results by the attempt_count field.
 func ByAttemptCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAttemptCount, opts...).ToFunc()
@@ -369,6 +407,36 @@ func ByAttemptCount(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowanceReserved orders the results by the allowance_reserved field.
 func ByAllowanceReserved(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowanceReserved, opts...).ToFunc()
+}
+
+// ByProvisioningPhase orders the results by the provisioning_phase field.
+func ByProvisioningPhase(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProvisioningPhase, opts...).ToFunc()
+}
+
+// ByProviderResultRecordedAt orders the results by the provider_result_recorded_at field.
+func ByProviderResultRecordedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProviderResultRecordedAt, opts...).ToFunc()
+}
+
+// BySettlementAttemptCount orders the results by the settlement_attempt_count field.
+func BySettlementAttemptCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSettlementAttemptCount, opts...).ToFunc()
+}
+
+// ByReleaseAttemptCount orders the results by the release_attempt_count field.
+func ByReleaseAttemptCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReleaseAttemptCount, opts...).ToFunc()
+}
+
+// ByNextReconcileAt orders the results by the next_reconcile_at field.
+func ByNextReconcileAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNextReconcileAt, opts...).ToFunc()
+}
+
+// ByLastReconcileError orders the results by the last_reconcile_error field.
+func ByLastReconcileError(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastReconcileError, opts...).ToFunc()
 }
 
 // ByVersion orders the results by the version field.

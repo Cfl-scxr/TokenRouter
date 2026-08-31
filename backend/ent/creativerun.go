@@ -79,10 +79,24 @@ type CreativeRun struct {
 	ErrorCode *string `json:"error_code,omitempty"`
 	// ErrorMessage holds the value of the "error_message" field.
 	ErrorMessage *string `json:"error_message,omitempty"`
+	// ReleaseTargetStatus holds the value of the "release_target_status" field.
+	ReleaseTargetStatus string `json:"release_target_status,omitempty"`
 	// AttemptCount holds the value of the "attempt_count" field.
 	AttemptCount int `json:"attempt_count,omitempty"`
 	// AllowanceReserved holds the value of the "allowance_reserved" field.
 	AllowanceReserved bool `json:"allowance_reserved,omitempty"`
+	// ProvisioningPhase holds the value of the "provisioning_phase" field.
+	ProvisioningPhase string `json:"provisioning_phase,omitempty"`
+	// ProviderResultRecordedAt holds the value of the "provider_result_recorded_at" field.
+	ProviderResultRecordedAt *time.Time `json:"provider_result_recorded_at,omitempty"`
+	// SettlementAttemptCount holds the value of the "settlement_attempt_count" field.
+	SettlementAttemptCount int `json:"settlement_attempt_count,omitempty"`
+	// ReleaseAttemptCount holds the value of the "release_attempt_count" field.
+	ReleaseAttemptCount int `json:"release_attempt_count,omitempty"`
+	// NextReconcileAt holds the value of the "next_reconcile_at" field.
+	NextReconcileAt *time.Time `json:"next_reconcile_at,omitempty"`
+	// LastReconcileError holds the value of the "last_reconcile_error" field.
+	LastReconcileError *string `json:"last_reconcile_error,omitempty"`
 	// Version holds the value of the "version" field.
 	Version int64 `json:"version,omitempty"`
 	// StartedAt holds the value of the "started_at" field.
@@ -105,11 +119,11 @@ func (*CreativeRun) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case creativerun.FieldEstimatedCost, creativerun.FieldHoldAmount, creativerun.FieldActualCost, creativerun.FieldBalanceHoldAmount, creativerun.FieldBaseUnitPrice, creativerun.FieldSubscriptionRateMultiplier, creativerun.FieldBalanceRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case creativerun.FieldID, creativerun.FieldUserID, creativerun.FieldGroupID, creativerun.FieldAPIKeyID, creativerun.FieldAccountID, creativerun.FieldRequestedOutputCount, creativerun.FieldAttemptCount, creativerun.FieldVersion:
+		case creativerun.FieldID, creativerun.FieldUserID, creativerun.FieldGroupID, creativerun.FieldAPIKeyID, creativerun.FieldAccountID, creativerun.FieldRequestedOutputCount, creativerun.FieldAttemptCount, creativerun.FieldSettlementAttemptCount, creativerun.FieldReleaseAttemptCount, creativerun.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case creativerun.FieldRunID, creativerun.FieldWorkspaceID, creativerun.FieldModel, creativerun.FieldRequestedModel, creativerun.FieldOperation, creativerun.FieldImageSize, creativerun.FieldAspectRatio, creativerun.FieldResponseMimeType, creativerun.FieldPromptHash, creativerun.FieldRequestFingerprint, creativerun.FieldIdempotencyKey, creativerun.FieldStatus, creativerun.FieldErrorCode, creativerun.FieldErrorMessage:
+		case creativerun.FieldRunID, creativerun.FieldWorkspaceID, creativerun.FieldModel, creativerun.FieldRequestedModel, creativerun.FieldOperation, creativerun.FieldImageSize, creativerun.FieldAspectRatio, creativerun.FieldResponseMimeType, creativerun.FieldPromptHash, creativerun.FieldRequestFingerprint, creativerun.FieldIdempotencyKey, creativerun.FieldStatus, creativerun.FieldErrorCode, creativerun.FieldErrorMessage, creativerun.FieldReleaseTargetStatus, creativerun.FieldProvisioningPhase, creativerun.FieldLastReconcileError:
 			values[i] = new(sql.NullString)
-		case creativerun.FieldCreatedAt, creativerun.FieldUpdatedAt, creativerun.FieldStartedAt, creativerun.FieldCompletedAt, creativerun.FieldCancelledAt:
+		case creativerun.FieldCreatedAt, creativerun.FieldUpdatedAt, creativerun.FieldProviderResultRecordedAt, creativerun.FieldNextReconcileAt, creativerun.FieldStartedAt, creativerun.FieldCompletedAt, creativerun.FieldCancelledAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -321,6 +335,12 @@ func (_m *CreativeRun) assignValues(columns []string, values []any) error {
 				_m.ErrorMessage = new(string)
 				*_m.ErrorMessage = value.String
 			}
+		case creativerun.FieldReleaseTargetStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field release_target_status", values[i])
+			} else if value.Valid {
+				_m.ReleaseTargetStatus = value.String
+			}
 		case creativerun.FieldAttemptCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field attempt_count", values[i])
@@ -332,6 +352,45 @@ func (_m *CreativeRun) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allowance_reserved", values[i])
 			} else if value.Valid {
 				_m.AllowanceReserved = value.Bool
+			}
+		case creativerun.FieldProvisioningPhase:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field provisioning_phase", values[i])
+			} else if value.Valid {
+				_m.ProvisioningPhase = value.String
+			}
+		case creativerun.FieldProviderResultRecordedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field provider_result_recorded_at", values[i])
+			} else if value.Valid {
+				_m.ProviderResultRecordedAt = new(time.Time)
+				*_m.ProviderResultRecordedAt = value.Time
+			}
+		case creativerun.FieldSettlementAttemptCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field settlement_attempt_count", values[i])
+			} else if value.Valid {
+				_m.SettlementAttemptCount = int(value.Int64)
+			}
+		case creativerun.FieldReleaseAttemptCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field release_attempt_count", values[i])
+			} else if value.Valid {
+				_m.ReleaseAttemptCount = int(value.Int64)
+			}
+		case creativerun.FieldNextReconcileAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field next_reconcile_at", values[i])
+			} else if value.Valid {
+				_m.NextReconcileAt = new(time.Time)
+				*_m.NextReconcileAt = value.Time
+			}
+		case creativerun.FieldLastReconcileError:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_reconcile_error", values[i])
+			} else if value.Valid {
+				_m.LastReconcileError = new(string)
+				*_m.LastReconcileError = value.String
 			}
 		case creativerun.FieldVersion:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -500,11 +559,38 @@ func (_m *CreativeRun) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	builder.WriteString("release_target_status=")
+	builder.WriteString(_m.ReleaseTargetStatus)
+	builder.WriteString(", ")
 	builder.WriteString("attempt_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AttemptCount))
 	builder.WriteString(", ")
 	builder.WriteString("allowance_reserved=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowanceReserved))
+	builder.WriteString(", ")
+	builder.WriteString("provisioning_phase=")
+	builder.WriteString(_m.ProvisioningPhase)
+	builder.WriteString(", ")
+	if v := _m.ProviderResultRecordedAt; v != nil {
+		builder.WriteString("provider_result_recorded_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("settlement_attempt_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SettlementAttemptCount))
+	builder.WriteString(", ")
+	builder.WriteString("release_attempt_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ReleaseAttemptCount))
+	builder.WriteString(", ")
+	if v := _m.NextReconcileAt; v != nil {
+		builder.WriteString("next_reconcile_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.LastReconcileError; v != nil {
+		builder.WriteString("last_reconcile_error=")
+		builder.WriteString(*v)
+	}
 	builder.WriteString(", ")
 	builder.WriteString("version=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Version))

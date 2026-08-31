@@ -152,7 +152,7 @@ import { h, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import Icon from '@/components/icons/Icon.vue'
-import type { CreativeRun } from '@/api/creative'
+import { CREATIVE_RUN_TERMINAL_STATUSES, type CreativeRun } from '@/api/creative'
 import { formatDateTime } from '@/utils/format'
 import { outputAssetKey, type LocalAsset } from '@/utils/creativeLocalStore'
 import { CREATIVE_OUTPUT_DRAG_MIME, serializeCreativeOutputDrag } from '@/utils/creativeDrag'
@@ -263,7 +263,7 @@ const HistoryIcon = {
 }
 
 function isActive(run: CreativeRun): boolean {
-  return run.status === 'queued' || run.status === 'running'
+  return !CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status)
 }
 
 // 后端时间戳兼容秒 / 毫秒
@@ -333,6 +333,15 @@ async function refresh(): Promise<void> {
 
 .status-running {
   @apply bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400;
+}
+
+.status-provider_succeeded,
+.status-settlement_pending {
+  @apply bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400;
+}
+
+.status-release_pending {
+  @apply bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400;
 }
 
 .status-succeeded {

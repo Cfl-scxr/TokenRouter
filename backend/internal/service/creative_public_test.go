@@ -139,6 +139,9 @@ func (r *creativeFakeRunRepo) TransitionCreativeRunStatus(ctx context.Context, r
 	if opts.ErrorMessage != nil {
 		run.ErrorMessage = opts.ErrorMessage
 	}
+	if opts.ReleaseTargetStatus != "" {
+		run.ReleaseTargetStatus = opts.ReleaseTargetStatus
+	}
 	if toStatus == CreativeRunStatusCancelled && opts.Now != nil {
 		run.CancelledAt = opts.Now
 	}
@@ -182,7 +185,7 @@ func (r *creativeFakeRunRepo) MarkCreativeRunSucceeded(ctx context.Context, runI
 	if !ok {
 		return ErrCreativeRunNotFound
 	}
-	if run.Status != CreativeRunStatusRunning {
+	if run.Status != CreativeRunStatusRunning && run.Status != CreativeRunStatusProviderSucceeded && run.Status != CreativeRunStatusSettlementPending {
 		return ErrCreativeInvalidTransition
 	}
 	run.Status = CreativeRunStatusSucceeded
@@ -252,6 +255,66 @@ func (r *creativeFakeRunRepo) IncrementCreativeRunAttempt(ctx context.Context, r
 	}
 	run.AttemptCount++
 	return run.AttemptCount, nil
+}
+
+func (r *creativeFakeRunRepo) IncrementCreativeRunSettlementAttempt(ctx context.Context, runID string) (int, error) {
+	run, ok := r.runs[runID]
+	if !ok {
+		return 0, ErrCreativeRunNotFound
+	}
+	run.SettlementAttemptCount++
+	return run.SettlementAttemptCount, nil
+}
+
+func (r *creativeFakeRunRepo) IncrementCreativeRunReleaseAttempt(ctx context.Context, runID string) (int, error) {
+	run, ok := r.runs[runID]
+	if !ok {
+		return 0, ErrCreativeRunNotFound
+	}
+	run.ReleaseAttemptCount++
+	return run.ReleaseAttemptCount, nil
+}
+
+func (r *creativeFakeRunRepo) SetCreativeRunProvisioningPhase(ctx context.Context, runID, phase string) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return ErrCreativeRunNotFound
+	}
+	run.ProvisioningPhase = phase
+	return nil
+}
+
+func (r *creativeFakeRunRepo) MarkCreativeRunProviderSucceeded(ctx context.Context, runID string, accountID int64, now time.Time) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return ErrCreativeRunNotFound
+	}
+	if accountID > 0 {
+		run.AccountID = &accountID
+	}
+	run.ProviderResultRecordedAt = &now
+	if run.Status == CreativeRunStatusRunning {
+		run.Status = CreativeRunStatusProviderSucceeded
+	}
+	return nil
+}
+
+func (r *creativeFakeRunRepo) SetCreativeRunReconcileError(ctx context.Context, runID, message string, next time.Time) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return ErrCreativeRunNotFound
+	}
+	if message == "" {
+		run.LastReconcileError = nil
+	} else {
+		run.LastReconcileError = &message
+	}
+	if next.IsZero() {
+		run.NextReconcileAt = nil
+	} else {
+		run.NextReconcileAt = &next
+	}
+	return nil
 }
 
 type creativeFakeManagedKeyRepo struct {
@@ -391,20 +454,22 @@ func (q *creativeFakeQueue) Reserve(ctx context.Context, blockTimeout time.Durat
 	}
 	runID := q.reserveBatch[0]
 	q.reserveBatch = q.reserveBatch[1:]
-	return ReservedCreativeRun{RunID: runID}, nil
+	return ReservedCreativeRun{RunID: runID, LeaseToken: "test-lease"}, nil
 }
 
-func (q *creativeFakeQueue) RequeueAfter(ctx context.Context, runID string, delay time.Duration) error {
+func (q *creativeFakeQueue) RequeueAfter(ctx context.Context, runID, leaseToken string, delay time.Duration) error {
 	q.requeued = append(q.requeued, runID)
 	return nil
 }
 
-func (q *creativeFakeQueue) Ack(ctx context.Context, runID string) error {
+func (q *creativeFakeQueue) Ack(ctx context.Context, runID, leaseToken string) error {
 	q.acked = append(q.acked, runID)
 	return nil
 }
 
-func (q *creativeFakeQueue) Heartbeat(ctx context.Context, runID string) error { return nil }
+func (q *creativeFakeQueue) Heartbeat(ctx context.Context, runID, leaseToken string) (bool, error) {
+	return true, nil
+}
 
 func (q *creativeFakeQueue) MoveDueDelayedToReady(ctx context.Context, limit int) (int, error) {
 	return 0, nil

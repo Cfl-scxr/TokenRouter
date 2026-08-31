@@ -199,6 +199,11 @@ func ErrorMessage(v string) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldErrorMessage, v))
 }
 
+// ReleaseTargetStatus applies equality check predicate on the "release_target_status" field. It's identical to ReleaseTargetStatusEQ.
+func ReleaseTargetStatus(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldReleaseTargetStatus, v))
+}
+
 // AttemptCount applies equality check predicate on the "attempt_count" field. It's identical to AttemptCountEQ.
 func AttemptCount(v int) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldAttemptCount, v))
@@ -207,6 +212,36 @@ func AttemptCount(v int) predicate.CreativeRun {
 // AllowanceReserved applies equality check predicate on the "allowance_reserved" field. It's identical to AllowanceReservedEQ.
 func AllowanceReserved(v bool) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldAllowanceReserved, v))
+}
+
+// ProvisioningPhase applies equality check predicate on the "provisioning_phase" field. It's identical to ProvisioningPhaseEQ.
+func ProvisioningPhase(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldProvisioningPhase, v))
+}
+
+// ProviderResultRecordedAt applies equality check predicate on the "provider_result_recorded_at" field. It's identical to ProviderResultRecordedAtEQ.
+func ProviderResultRecordedAt(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldProviderResultRecordedAt, v))
+}
+
+// SettlementAttemptCount applies equality check predicate on the "settlement_attempt_count" field. It's identical to SettlementAttemptCountEQ.
+func SettlementAttemptCount(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldSettlementAttemptCount, v))
+}
+
+// ReleaseAttemptCount applies equality check predicate on the "release_attempt_count" field. It's identical to ReleaseAttemptCountEQ.
+func ReleaseAttemptCount(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldReleaseAttemptCount, v))
+}
+
+// NextReconcileAt applies equality check predicate on the "next_reconcile_at" field. It's identical to NextReconcileAtEQ.
+func NextReconcileAt(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldNextReconcileAt, v))
+}
+
+// LastReconcileError applies equality check predicate on the "last_reconcile_error" field. It's identical to LastReconcileErrorEQ.
+func LastReconcileError(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldLastReconcileError, v))
 }
 
 // Version applies equality check predicate on the "version" field. It's identical to VersionEQ.
@@ -1779,6 +1814,71 @@ func ErrorMessageContainsFold(v string) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldContainsFold(FieldErrorMessage, v))
 }
 
+// ReleaseTargetStatusEQ applies the EQ predicate on the "release_target_status" field.
+func ReleaseTargetStatusEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusNEQ applies the NEQ predicate on the "release_target_status" field.
+func ReleaseTargetStatusNEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusIn applies the In predicate on the "release_target_status" field.
+func ReleaseTargetStatusIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldReleaseTargetStatus, vs...))
+}
+
+// ReleaseTargetStatusNotIn applies the NotIn predicate on the "release_target_status" field.
+func ReleaseTargetStatusNotIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldReleaseTargetStatus, vs...))
+}
+
+// ReleaseTargetStatusGT applies the GT predicate on the "release_target_status" field.
+func ReleaseTargetStatusGT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusGTE applies the GTE predicate on the "release_target_status" field.
+func ReleaseTargetStatusGTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusLT applies the LT predicate on the "release_target_status" field.
+func ReleaseTargetStatusLT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusLTE applies the LTE predicate on the "release_target_status" field.
+func ReleaseTargetStatusLTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusContains applies the Contains predicate on the "release_target_status" field.
+func ReleaseTargetStatusContains(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContains(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusHasPrefix applies the HasPrefix predicate on the "release_target_status" field.
+func ReleaseTargetStatusHasPrefix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasPrefix(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusHasSuffix applies the HasSuffix predicate on the "release_target_status" field.
+func ReleaseTargetStatusHasSuffix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasSuffix(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusEqualFold applies the EqualFold predicate on the "release_target_status" field.
+func ReleaseTargetStatusEqualFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEqualFold(FieldReleaseTargetStatus, v))
+}
+
+// ReleaseTargetStatusContainsFold applies the ContainsFold predicate on the "release_target_status" field.
+func ReleaseTargetStatusContainsFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContainsFold(FieldReleaseTargetStatus, v))
+}
+
 // AttemptCountEQ applies the EQ predicate on the "attempt_count" field.
 func AttemptCountEQ(v int) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldEQ(FieldAttemptCount, v))
@@ -1827,6 +1927,326 @@ func AllowanceReservedEQ(v bool) predicate.CreativeRun {
 // AllowanceReservedNEQ applies the NEQ predicate on the "allowance_reserved" field.
 func AllowanceReservedNEQ(v bool) predicate.CreativeRun {
 	return predicate.CreativeRun(sql.FieldNEQ(FieldAllowanceReserved, v))
+}
+
+// ProvisioningPhaseEQ applies the EQ predicate on the "provisioning_phase" field.
+func ProvisioningPhaseEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseNEQ applies the NEQ predicate on the "provisioning_phase" field.
+func ProvisioningPhaseNEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseIn applies the In predicate on the "provisioning_phase" field.
+func ProvisioningPhaseIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldProvisioningPhase, vs...))
+}
+
+// ProvisioningPhaseNotIn applies the NotIn predicate on the "provisioning_phase" field.
+func ProvisioningPhaseNotIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldProvisioningPhase, vs...))
+}
+
+// ProvisioningPhaseGT applies the GT predicate on the "provisioning_phase" field.
+func ProvisioningPhaseGT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseGTE applies the GTE predicate on the "provisioning_phase" field.
+func ProvisioningPhaseGTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseLT applies the LT predicate on the "provisioning_phase" field.
+func ProvisioningPhaseLT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseLTE applies the LTE predicate on the "provisioning_phase" field.
+func ProvisioningPhaseLTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseContains applies the Contains predicate on the "provisioning_phase" field.
+func ProvisioningPhaseContains(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContains(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseHasPrefix applies the HasPrefix predicate on the "provisioning_phase" field.
+func ProvisioningPhaseHasPrefix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasPrefix(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseHasSuffix applies the HasSuffix predicate on the "provisioning_phase" field.
+func ProvisioningPhaseHasSuffix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasSuffix(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseEqualFold applies the EqualFold predicate on the "provisioning_phase" field.
+func ProvisioningPhaseEqualFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEqualFold(FieldProvisioningPhase, v))
+}
+
+// ProvisioningPhaseContainsFold applies the ContainsFold predicate on the "provisioning_phase" field.
+func ProvisioningPhaseContainsFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContainsFold(FieldProvisioningPhase, v))
+}
+
+// ProviderResultRecordedAtEQ applies the EQ predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtEQ(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldProviderResultRecordedAt, v))
+}
+
+// ProviderResultRecordedAtNEQ applies the NEQ predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtNEQ(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldProviderResultRecordedAt, v))
+}
+
+// ProviderResultRecordedAtIn applies the In predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtIn(vs ...time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldProviderResultRecordedAt, vs...))
+}
+
+// ProviderResultRecordedAtNotIn applies the NotIn predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtNotIn(vs ...time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldProviderResultRecordedAt, vs...))
+}
+
+// ProviderResultRecordedAtGT applies the GT predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtGT(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldProviderResultRecordedAt, v))
+}
+
+// ProviderResultRecordedAtGTE applies the GTE predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtGTE(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldProviderResultRecordedAt, v))
+}
+
+// ProviderResultRecordedAtLT applies the LT predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtLT(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldProviderResultRecordedAt, v))
+}
+
+// ProviderResultRecordedAtLTE applies the LTE predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtLTE(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldProviderResultRecordedAt, v))
+}
+
+// ProviderResultRecordedAtIsNil applies the IsNil predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtIsNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIsNull(FieldProviderResultRecordedAt))
+}
+
+// ProviderResultRecordedAtNotNil applies the NotNil predicate on the "provider_result_recorded_at" field.
+func ProviderResultRecordedAtNotNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotNull(FieldProviderResultRecordedAt))
+}
+
+// SettlementAttemptCountEQ applies the EQ predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountEQ(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldSettlementAttemptCount, v))
+}
+
+// SettlementAttemptCountNEQ applies the NEQ predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountNEQ(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldSettlementAttemptCount, v))
+}
+
+// SettlementAttemptCountIn applies the In predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountIn(vs ...int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldSettlementAttemptCount, vs...))
+}
+
+// SettlementAttemptCountNotIn applies the NotIn predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountNotIn(vs ...int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldSettlementAttemptCount, vs...))
+}
+
+// SettlementAttemptCountGT applies the GT predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountGT(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldSettlementAttemptCount, v))
+}
+
+// SettlementAttemptCountGTE applies the GTE predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountGTE(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldSettlementAttemptCount, v))
+}
+
+// SettlementAttemptCountLT applies the LT predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountLT(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldSettlementAttemptCount, v))
+}
+
+// SettlementAttemptCountLTE applies the LTE predicate on the "settlement_attempt_count" field.
+func SettlementAttemptCountLTE(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldSettlementAttemptCount, v))
+}
+
+// ReleaseAttemptCountEQ applies the EQ predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountEQ(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldReleaseAttemptCount, v))
+}
+
+// ReleaseAttemptCountNEQ applies the NEQ predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountNEQ(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldReleaseAttemptCount, v))
+}
+
+// ReleaseAttemptCountIn applies the In predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountIn(vs ...int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldReleaseAttemptCount, vs...))
+}
+
+// ReleaseAttemptCountNotIn applies the NotIn predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountNotIn(vs ...int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldReleaseAttemptCount, vs...))
+}
+
+// ReleaseAttemptCountGT applies the GT predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountGT(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldReleaseAttemptCount, v))
+}
+
+// ReleaseAttemptCountGTE applies the GTE predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountGTE(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldReleaseAttemptCount, v))
+}
+
+// ReleaseAttemptCountLT applies the LT predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountLT(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldReleaseAttemptCount, v))
+}
+
+// ReleaseAttemptCountLTE applies the LTE predicate on the "release_attempt_count" field.
+func ReleaseAttemptCountLTE(v int) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldReleaseAttemptCount, v))
+}
+
+// NextReconcileAtEQ applies the EQ predicate on the "next_reconcile_at" field.
+func NextReconcileAtEQ(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldNextReconcileAt, v))
+}
+
+// NextReconcileAtNEQ applies the NEQ predicate on the "next_reconcile_at" field.
+func NextReconcileAtNEQ(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldNextReconcileAt, v))
+}
+
+// NextReconcileAtIn applies the In predicate on the "next_reconcile_at" field.
+func NextReconcileAtIn(vs ...time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldNextReconcileAt, vs...))
+}
+
+// NextReconcileAtNotIn applies the NotIn predicate on the "next_reconcile_at" field.
+func NextReconcileAtNotIn(vs ...time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldNextReconcileAt, vs...))
+}
+
+// NextReconcileAtGT applies the GT predicate on the "next_reconcile_at" field.
+func NextReconcileAtGT(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldNextReconcileAt, v))
+}
+
+// NextReconcileAtGTE applies the GTE predicate on the "next_reconcile_at" field.
+func NextReconcileAtGTE(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldNextReconcileAt, v))
+}
+
+// NextReconcileAtLT applies the LT predicate on the "next_reconcile_at" field.
+func NextReconcileAtLT(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldNextReconcileAt, v))
+}
+
+// NextReconcileAtLTE applies the LTE predicate on the "next_reconcile_at" field.
+func NextReconcileAtLTE(v time.Time) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldNextReconcileAt, v))
+}
+
+// NextReconcileAtIsNil applies the IsNil predicate on the "next_reconcile_at" field.
+func NextReconcileAtIsNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIsNull(FieldNextReconcileAt))
+}
+
+// NextReconcileAtNotNil applies the NotNil predicate on the "next_reconcile_at" field.
+func NextReconcileAtNotNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotNull(FieldNextReconcileAt))
+}
+
+// LastReconcileErrorEQ applies the EQ predicate on the "last_reconcile_error" field.
+func LastReconcileErrorEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEQ(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorNEQ applies the NEQ predicate on the "last_reconcile_error" field.
+func LastReconcileErrorNEQ(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNEQ(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorIn applies the In predicate on the "last_reconcile_error" field.
+func LastReconcileErrorIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIn(FieldLastReconcileError, vs...))
+}
+
+// LastReconcileErrorNotIn applies the NotIn predicate on the "last_reconcile_error" field.
+func LastReconcileErrorNotIn(vs ...string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotIn(FieldLastReconcileError, vs...))
+}
+
+// LastReconcileErrorGT applies the GT predicate on the "last_reconcile_error" field.
+func LastReconcileErrorGT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGT(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorGTE applies the GTE predicate on the "last_reconcile_error" field.
+func LastReconcileErrorGTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldGTE(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorLT applies the LT predicate on the "last_reconcile_error" field.
+func LastReconcileErrorLT(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLT(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorLTE applies the LTE predicate on the "last_reconcile_error" field.
+func LastReconcileErrorLTE(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldLTE(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorContains applies the Contains predicate on the "last_reconcile_error" field.
+func LastReconcileErrorContains(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContains(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorHasPrefix applies the HasPrefix predicate on the "last_reconcile_error" field.
+func LastReconcileErrorHasPrefix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasPrefix(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorHasSuffix applies the HasSuffix predicate on the "last_reconcile_error" field.
+func LastReconcileErrorHasSuffix(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldHasSuffix(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorIsNil applies the IsNil predicate on the "last_reconcile_error" field.
+func LastReconcileErrorIsNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldIsNull(FieldLastReconcileError))
+}
+
+// LastReconcileErrorNotNil applies the NotNil predicate on the "last_reconcile_error" field.
+func LastReconcileErrorNotNil() predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldNotNull(FieldLastReconcileError))
+}
+
+// LastReconcileErrorEqualFold applies the EqualFold predicate on the "last_reconcile_error" field.
+func LastReconcileErrorEqualFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldEqualFold(FieldLastReconcileError, v))
+}
+
+// LastReconcileErrorContainsFold applies the ContainsFold predicate on the "last_reconcile_error" field.
+func LastReconcileErrorContainsFold(v string) predicate.CreativeRun {
+	return predicate.CreativeRun(sql.FieldContainsFold(FieldLastReconcileError, v))
 }
 
 // VersionEQ applies the EQ predicate on the "version" field.

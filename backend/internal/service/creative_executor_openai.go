@@ -93,12 +93,14 @@ func (e *CreativeExecutor) creativeOpenAIURL(account *Account, endpoint string) 
 func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload, upstreamModel string) ([]byte, string, error) {
 	if run.Operation == CreativeOperationGenerate {
 		bodyMap := map[string]any{
-			"model":           upstreamModel,
-			"prompt":          payload.Prompt,
-			"n":               1,
-			"response_format": "b64_json",
-			"output_format":   "png",
-			"size":            creativeOpenAIImageSize(run.ImageSize, run.AspectRatio),
+			"model":         upstreamModel,
+			"prompt":        payload.Prompt,
+			"n":             1,
+			"output_format": "png",
+			"size":          creativeOpenAIImageSize(run.ImageSize, run.AspectRatio),
+		}
+		if creativeOpenAIUsesResponseFormat(upstreamModel) {
+			bodyMap["response_format"] = "b64_json"
 		}
 		if quality := strings.TrimSpace(payload.Quality); quality != "" {
 			bodyMap["quality"] = quality
@@ -139,8 +141,10 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 	if err := writer.WriteField("prompt", payload.Prompt); err != nil {
 		return nil, "", err
 	}
-	if err := writer.WriteField("response_format", "b64_json"); err != nil {
-		return nil, "", err
+	if creativeOpenAIUsesResponseFormat(upstreamModel) {
+		if err := writer.WriteField("response_format", "b64_json"); err != nil {
+			return nil, "", err
+		}
 	}
 	if err := writer.WriteField("output_format", "png"); err != nil {
 		return nil, "", err
@@ -165,6 +169,11 @@ func buildCreativeOpenAIRequestBody(run CreativeRun, payload CreativeRunPayload,
 		return nil, "", err
 	}
 	return buffer.Bytes(), writer.FormDataContentType(), nil
+}
+
+// creativeOpenAIUsesResponseFormat 仅对 DALL-E 保留旧版 response_format 参数；GPT Image 固定返回 base64。
+func creativeOpenAIUsesResponseFormat(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "dall-e")
 }
 
 // parseCreativeOpenAIImageOutputs 解析 OpenAI images 响应（grok 同结构）的 data[].b64_json。

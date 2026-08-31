@@ -91,6 +91,7 @@ var ProviderSet = wire.NewSet(
 	NewUsageBillingRepository,
 	NewBatchImageRepository,
 	NewCreativeRunRepository,
+	NewCreativeRunOutboxRepository,
 	NewCreativeTransientStore,
 	NewCreativeQueue,
 	ProvideCreativeManagedKeyRepository,

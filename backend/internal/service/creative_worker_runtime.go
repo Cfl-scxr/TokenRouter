@@ -96,7 +96,7 @@ func (r *CreativeWorkerRuntime) Start() {
 	r.wg = &sync.WaitGroup{}
 	r.workers = make(map[uint64]*creativeWorkerHandle)
 	r.desiredWorkerCount = desired
-	r.wg.Add(2)
+	r.wg.Add(4)
 	go func() {
 		defer r.wg.Done()
 		r.worker.RunDelayedMover(ctx)
@@ -104,6 +104,18 @@ func (r *CreativeWorkerRuntime) Start() {
 	go func() {
 		defer r.wg.Done()
 		r.worker.RunStaleActiveRecovery(ctx)
+	}()
+	go func() {
+		defer r.wg.Done()
+		if r.worker.service != nil {
+			r.worker.service.RunCreativeOutboxReconciler(ctx)
+		}
+	}()
+	go func() {
+		defer r.wg.Done()
+		if r.worker.service != nil {
+			r.worker.service.RunCreativeTransientReconciler(ctx)
+		}
 	}()
 	r.reconcileWorkersLocked()
 	wg := r.wg

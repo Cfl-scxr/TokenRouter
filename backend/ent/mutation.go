@@ -24,6 +24,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/batchimageitem"
 	"github.com/TokenFlux/TokenRouter/ent/batchimagejob"
 	"github.com/TokenFlux/TokenRouter/ent/creativerun"
+	"github.com/TokenFlux/TokenRouter/ent/creativerunoutbox"
 	"github.com/TokenFlux/TokenRouter/ent/creativerunoutput"
 	"github.com/TokenFlux/TokenRouter/ent/datasharesession"
 	"github.com/TokenFlux/TokenRouter/ent/errorpassthroughrule"
@@ -83,6 +84,7 @@ const (
 	TypeBatchImageItem           = "BatchImageItem"
 	TypeBatchImageJob            = "BatchImageJob"
 	TypeCreativeRun              = "CreativeRun"
+	TypeCreativeRunOutbox        = "CreativeRunOutbox"
 	TypeCreativeRunOutput        = "CreativeRunOutput"
 	TypeDataShareSession         = "DataShareSession"
 	TypeErrorPassthroughRule     = "ErrorPassthroughRule"
@@ -17328,9 +17330,18 @@ type CreativeRunMutation struct {
 	plan_group_rate_multiplier_enabled  *bool
 	error_code                          *string
 	error_message                       *string
+	release_target_status               *string
 	attempt_count                       *int
 	addattempt_count                    *int
 	allowance_reserved                  *bool
+	provisioning_phase                  *string
+	provider_result_recorded_at         *time.Time
+	settlement_attempt_count            *int
+	addsettlement_attempt_count         *int
+	release_attempt_count               *int
+	addrelease_attempt_count            *int
+	next_reconcile_at                   *time.Time
+	last_reconcile_error                *string
 	version                             *int64
 	addversion                          *int64
 	started_at                          *time.Time
@@ -18869,6 +18880,42 @@ func (m *CreativeRunMutation) ResetErrorMessage() {
 	delete(m.clearedFields, creativerun.FieldErrorMessage)
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (m *CreativeRunMutation) SetReleaseTargetStatus(s string) {
+	m.release_target_status = &s
+}
+
+// ReleaseTargetStatus returns the value of the "release_target_status" field in the mutation.
+func (m *CreativeRunMutation) ReleaseTargetStatus() (r string, exists bool) {
+	v := m.release_target_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseTargetStatus returns the old "release_target_status" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldReleaseTargetStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseTargetStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseTargetStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseTargetStatus: %w", err)
+	}
+	return oldValue.ReleaseTargetStatus, nil
+}
+
+// ResetReleaseTargetStatus resets all changes to the "release_target_status" field.
+func (m *CreativeRunMutation) ResetReleaseTargetStatus() {
+	m.release_target_status = nil
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (m *CreativeRunMutation) SetAttemptCount(i int) {
 	m.attempt_count = &i
@@ -18959,6 +19006,301 @@ func (m *CreativeRunMutation) OldAllowanceReserved(ctx context.Context) (v bool,
 // ResetAllowanceReserved resets all changes to the "allowance_reserved" field.
 func (m *CreativeRunMutation) ResetAllowanceReserved() {
 	m.allowance_reserved = nil
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (m *CreativeRunMutation) SetProvisioningPhase(s string) {
+	m.provisioning_phase = &s
+}
+
+// ProvisioningPhase returns the value of the "provisioning_phase" field in the mutation.
+func (m *CreativeRunMutation) ProvisioningPhase() (r string, exists bool) {
+	v := m.provisioning_phase
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvisioningPhase returns the old "provisioning_phase" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldProvisioningPhase(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvisioningPhase is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvisioningPhase requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvisioningPhase: %w", err)
+	}
+	return oldValue.ProvisioningPhase, nil
+}
+
+// ResetProvisioningPhase resets all changes to the "provisioning_phase" field.
+func (m *CreativeRunMutation) ResetProvisioningPhase() {
+	m.provisioning_phase = nil
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (m *CreativeRunMutation) SetProviderResultRecordedAt(t time.Time) {
+	m.provider_result_recorded_at = &t
+}
+
+// ProviderResultRecordedAt returns the value of the "provider_result_recorded_at" field in the mutation.
+func (m *CreativeRunMutation) ProviderResultRecordedAt() (r time.Time, exists bool) {
+	v := m.provider_result_recorded_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProviderResultRecordedAt returns the old "provider_result_recorded_at" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldProviderResultRecordedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProviderResultRecordedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProviderResultRecordedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProviderResultRecordedAt: %w", err)
+	}
+	return oldValue.ProviderResultRecordedAt, nil
+}
+
+// ClearProviderResultRecordedAt clears the value of the "provider_result_recorded_at" field.
+func (m *CreativeRunMutation) ClearProviderResultRecordedAt() {
+	m.provider_result_recorded_at = nil
+	m.clearedFields[creativerun.FieldProviderResultRecordedAt] = struct{}{}
+}
+
+// ProviderResultRecordedAtCleared returns if the "provider_result_recorded_at" field was cleared in this mutation.
+func (m *CreativeRunMutation) ProviderResultRecordedAtCleared() bool {
+	_, ok := m.clearedFields[creativerun.FieldProviderResultRecordedAt]
+	return ok
+}
+
+// ResetProviderResultRecordedAt resets all changes to the "provider_result_recorded_at" field.
+func (m *CreativeRunMutation) ResetProviderResultRecordedAt() {
+	m.provider_result_recorded_at = nil
+	delete(m.clearedFields, creativerun.FieldProviderResultRecordedAt)
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (m *CreativeRunMutation) SetSettlementAttemptCount(i int) {
+	m.settlement_attempt_count = &i
+	m.addsettlement_attempt_count = nil
+}
+
+// SettlementAttemptCount returns the value of the "settlement_attempt_count" field in the mutation.
+func (m *CreativeRunMutation) SettlementAttemptCount() (r int, exists bool) {
+	v := m.settlement_attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSettlementAttemptCount returns the old "settlement_attempt_count" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldSettlementAttemptCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSettlementAttemptCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSettlementAttemptCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSettlementAttemptCount: %w", err)
+	}
+	return oldValue.SettlementAttemptCount, nil
+}
+
+// AddSettlementAttemptCount adds i to the "settlement_attempt_count" field.
+func (m *CreativeRunMutation) AddSettlementAttemptCount(i int) {
+	if m.addsettlement_attempt_count != nil {
+		*m.addsettlement_attempt_count += i
+	} else {
+		m.addsettlement_attempt_count = &i
+	}
+}
+
+// AddedSettlementAttemptCount returns the value that was added to the "settlement_attempt_count" field in this mutation.
+func (m *CreativeRunMutation) AddedSettlementAttemptCount() (r int, exists bool) {
+	v := m.addsettlement_attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSettlementAttemptCount resets all changes to the "settlement_attempt_count" field.
+func (m *CreativeRunMutation) ResetSettlementAttemptCount() {
+	m.settlement_attempt_count = nil
+	m.addsettlement_attempt_count = nil
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (m *CreativeRunMutation) SetReleaseAttemptCount(i int) {
+	m.release_attempt_count = &i
+	m.addrelease_attempt_count = nil
+}
+
+// ReleaseAttemptCount returns the value of the "release_attempt_count" field in the mutation.
+func (m *CreativeRunMutation) ReleaseAttemptCount() (r int, exists bool) {
+	v := m.release_attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldReleaseAttemptCount returns the old "release_attempt_count" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldReleaseAttemptCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldReleaseAttemptCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldReleaseAttemptCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldReleaseAttemptCount: %w", err)
+	}
+	return oldValue.ReleaseAttemptCount, nil
+}
+
+// AddReleaseAttemptCount adds i to the "release_attempt_count" field.
+func (m *CreativeRunMutation) AddReleaseAttemptCount(i int) {
+	if m.addrelease_attempt_count != nil {
+		*m.addrelease_attempt_count += i
+	} else {
+		m.addrelease_attempt_count = &i
+	}
+}
+
+// AddedReleaseAttemptCount returns the value that was added to the "release_attempt_count" field in this mutation.
+func (m *CreativeRunMutation) AddedReleaseAttemptCount() (r int, exists bool) {
+	v := m.addrelease_attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetReleaseAttemptCount resets all changes to the "release_attempt_count" field.
+func (m *CreativeRunMutation) ResetReleaseAttemptCount() {
+	m.release_attempt_count = nil
+	m.addrelease_attempt_count = nil
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (m *CreativeRunMutation) SetNextReconcileAt(t time.Time) {
+	m.next_reconcile_at = &t
+}
+
+// NextReconcileAt returns the value of the "next_reconcile_at" field in the mutation.
+func (m *CreativeRunMutation) NextReconcileAt() (r time.Time, exists bool) {
+	v := m.next_reconcile_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextReconcileAt returns the old "next_reconcile_at" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldNextReconcileAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextReconcileAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextReconcileAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextReconcileAt: %w", err)
+	}
+	return oldValue.NextReconcileAt, nil
+}
+
+// ClearNextReconcileAt clears the value of the "next_reconcile_at" field.
+func (m *CreativeRunMutation) ClearNextReconcileAt() {
+	m.next_reconcile_at = nil
+	m.clearedFields[creativerun.FieldNextReconcileAt] = struct{}{}
+}
+
+// NextReconcileAtCleared returns if the "next_reconcile_at" field was cleared in this mutation.
+func (m *CreativeRunMutation) NextReconcileAtCleared() bool {
+	_, ok := m.clearedFields[creativerun.FieldNextReconcileAt]
+	return ok
+}
+
+// ResetNextReconcileAt resets all changes to the "next_reconcile_at" field.
+func (m *CreativeRunMutation) ResetNextReconcileAt() {
+	m.next_reconcile_at = nil
+	delete(m.clearedFields, creativerun.FieldNextReconcileAt)
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (m *CreativeRunMutation) SetLastReconcileError(s string) {
+	m.last_reconcile_error = &s
+}
+
+// LastReconcileError returns the value of the "last_reconcile_error" field in the mutation.
+func (m *CreativeRunMutation) LastReconcileError() (r string, exists bool) {
+	v := m.last_reconcile_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastReconcileError returns the old "last_reconcile_error" field's value of the CreativeRun entity.
+// If the CreativeRun object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunMutation) OldLastReconcileError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastReconcileError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastReconcileError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastReconcileError: %w", err)
+	}
+	return oldValue.LastReconcileError, nil
+}
+
+// ClearLastReconcileError clears the value of the "last_reconcile_error" field.
+func (m *CreativeRunMutation) ClearLastReconcileError() {
+	m.last_reconcile_error = nil
+	m.clearedFields[creativerun.FieldLastReconcileError] = struct{}{}
+}
+
+// LastReconcileErrorCleared returns if the "last_reconcile_error" field was cleared in this mutation.
+func (m *CreativeRunMutation) LastReconcileErrorCleared() bool {
+	_, ok := m.clearedFields[creativerun.FieldLastReconcileError]
+	return ok
+}
+
+// ResetLastReconcileError resets all changes to the "last_reconcile_error" field.
+func (m *CreativeRunMutation) ResetLastReconcileError() {
+	m.last_reconcile_error = nil
+	delete(m.clearedFields, creativerun.FieldLastReconcileError)
 }
 
 // SetVersion sets the "version" field.
@@ -19198,7 +19540,7 @@ func (m *CreativeRunMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CreativeRunMutation) Fields() []string {
-	fields := make([]string, 0, 36)
+	fields := make([]string, 0, 43)
 	if m.created_at != nil {
 		fields = append(fields, creativerun.FieldCreatedAt)
 	}
@@ -19289,11 +19631,32 @@ func (m *CreativeRunMutation) Fields() []string {
 	if m.error_message != nil {
 		fields = append(fields, creativerun.FieldErrorMessage)
 	}
+	if m.release_target_status != nil {
+		fields = append(fields, creativerun.FieldReleaseTargetStatus)
+	}
 	if m.attempt_count != nil {
 		fields = append(fields, creativerun.FieldAttemptCount)
 	}
 	if m.allowance_reserved != nil {
 		fields = append(fields, creativerun.FieldAllowanceReserved)
+	}
+	if m.provisioning_phase != nil {
+		fields = append(fields, creativerun.FieldProvisioningPhase)
+	}
+	if m.provider_result_recorded_at != nil {
+		fields = append(fields, creativerun.FieldProviderResultRecordedAt)
+	}
+	if m.settlement_attempt_count != nil {
+		fields = append(fields, creativerun.FieldSettlementAttemptCount)
+	}
+	if m.release_attempt_count != nil {
+		fields = append(fields, creativerun.FieldReleaseAttemptCount)
+	}
+	if m.next_reconcile_at != nil {
+		fields = append(fields, creativerun.FieldNextReconcileAt)
+	}
+	if m.last_reconcile_error != nil {
+		fields = append(fields, creativerun.FieldLastReconcileError)
 	}
 	if m.version != nil {
 		fields = append(fields, creativerun.FieldVersion)
@@ -19375,10 +19738,24 @@ func (m *CreativeRunMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrorCode()
 	case creativerun.FieldErrorMessage:
 		return m.ErrorMessage()
+	case creativerun.FieldReleaseTargetStatus:
+		return m.ReleaseTargetStatus()
 	case creativerun.FieldAttemptCount:
 		return m.AttemptCount()
 	case creativerun.FieldAllowanceReserved:
 		return m.AllowanceReserved()
+	case creativerun.FieldProvisioningPhase:
+		return m.ProvisioningPhase()
+	case creativerun.FieldProviderResultRecordedAt:
+		return m.ProviderResultRecordedAt()
+	case creativerun.FieldSettlementAttemptCount:
+		return m.SettlementAttemptCount()
+	case creativerun.FieldReleaseAttemptCount:
+		return m.ReleaseAttemptCount()
+	case creativerun.FieldNextReconcileAt:
+		return m.NextReconcileAt()
+	case creativerun.FieldLastReconcileError:
+		return m.LastReconcileError()
 	case creativerun.FieldVersion:
 		return m.Version()
 	case creativerun.FieldStartedAt:
@@ -19456,10 +19833,24 @@ func (m *CreativeRunMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldErrorCode(ctx)
 	case creativerun.FieldErrorMessage:
 		return m.OldErrorMessage(ctx)
+	case creativerun.FieldReleaseTargetStatus:
+		return m.OldReleaseTargetStatus(ctx)
 	case creativerun.FieldAttemptCount:
 		return m.OldAttemptCount(ctx)
 	case creativerun.FieldAllowanceReserved:
 		return m.OldAllowanceReserved(ctx)
+	case creativerun.FieldProvisioningPhase:
+		return m.OldProvisioningPhase(ctx)
+	case creativerun.FieldProviderResultRecordedAt:
+		return m.OldProviderResultRecordedAt(ctx)
+	case creativerun.FieldSettlementAttemptCount:
+		return m.OldSettlementAttemptCount(ctx)
+	case creativerun.FieldReleaseAttemptCount:
+		return m.OldReleaseAttemptCount(ctx)
+	case creativerun.FieldNextReconcileAt:
+		return m.OldNextReconcileAt(ctx)
+	case creativerun.FieldLastReconcileError:
+		return m.OldLastReconcileError(ctx)
 	case creativerun.FieldVersion:
 		return m.OldVersion(ctx)
 	case creativerun.FieldStartedAt:
@@ -19687,6 +20078,13 @@ func (m *CreativeRunMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetErrorMessage(v)
 		return nil
+	case creativerun.FieldReleaseTargetStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseTargetStatus(v)
+		return nil
 	case creativerun.FieldAttemptCount:
 		v, ok := value.(int)
 		if !ok {
@@ -19700,6 +20098,48 @@ func (m *CreativeRunMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowanceReserved(v)
+		return nil
+	case creativerun.FieldProvisioningPhase:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvisioningPhase(v)
+		return nil
+	case creativerun.FieldProviderResultRecordedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProviderResultRecordedAt(v)
+		return nil
+	case creativerun.FieldSettlementAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSettlementAttemptCount(v)
+		return nil
+	case creativerun.FieldReleaseAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetReleaseAttemptCount(v)
+		return nil
+	case creativerun.FieldNextReconcileAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextReconcileAt(v)
+		return nil
+	case creativerun.FieldLastReconcileError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastReconcileError(v)
 		return nil
 	case creativerun.FieldVersion:
 		v, ok := value.(int64)
@@ -19776,6 +20216,12 @@ func (m *CreativeRunMutation) AddedFields() []string {
 	if m.addattempt_count != nil {
 		fields = append(fields, creativerun.FieldAttemptCount)
 	}
+	if m.addsettlement_attempt_count != nil {
+		fields = append(fields, creativerun.FieldSettlementAttemptCount)
+	}
+	if m.addrelease_attempt_count != nil {
+		fields = append(fields, creativerun.FieldReleaseAttemptCount)
+	}
 	if m.addversion != nil {
 		fields = append(fields, creativerun.FieldVersion)
 	}
@@ -19813,6 +20259,10 @@ func (m *CreativeRunMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedBalanceRateMultiplier()
 	case creativerun.FieldAttemptCount:
 		return m.AddedAttemptCount()
+	case creativerun.FieldSettlementAttemptCount:
+		return m.AddedSettlementAttemptCount()
+	case creativerun.FieldReleaseAttemptCount:
+		return m.AddedReleaseAttemptCount()
 	case creativerun.FieldVersion:
 		return m.AddedVersion()
 	}
@@ -19915,6 +20365,20 @@ func (m *CreativeRunMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddAttemptCount(v)
 		return nil
+	case creativerun.FieldSettlementAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSettlementAttemptCount(v)
+		return nil
+	case creativerun.FieldReleaseAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddReleaseAttemptCount(v)
+		return nil
 	case creativerun.FieldVersion:
 		v, ok := value.(int64)
 		if !ok {
@@ -19950,6 +20414,15 @@ func (m *CreativeRunMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(creativerun.FieldErrorMessage) {
 		fields = append(fields, creativerun.FieldErrorMessage)
+	}
+	if m.FieldCleared(creativerun.FieldProviderResultRecordedAt) {
+		fields = append(fields, creativerun.FieldProviderResultRecordedAt)
+	}
+	if m.FieldCleared(creativerun.FieldNextReconcileAt) {
+		fields = append(fields, creativerun.FieldNextReconcileAt)
+	}
+	if m.FieldCleared(creativerun.FieldLastReconcileError) {
+		fields = append(fields, creativerun.FieldLastReconcileError)
 	}
 	if m.FieldCleared(creativerun.FieldStartedAt) {
 		fields = append(fields, creativerun.FieldStartedAt)
@@ -19994,6 +20467,15 @@ func (m *CreativeRunMutation) ClearField(name string) error {
 		return nil
 	case creativerun.FieldErrorMessage:
 		m.ClearErrorMessage()
+		return nil
+	case creativerun.FieldProviderResultRecordedAt:
+		m.ClearProviderResultRecordedAt()
+		return nil
+	case creativerun.FieldNextReconcileAt:
+		m.ClearNextReconcileAt()
+		return nil
+	case creativerun.FieldLastReconcileError:
+		m.ClearLastReconcileError()
 		return nil
 	case creativerun.FieldStartedAt:
 		m.ClearStartedAt()
@@ -20102,11 +20584,32 @@ func (m *CreativeRunMutation) ResetField(name string) error {
 	case creativerun.FieldErrorMessage:
 		m.ResetErrorMessage()
 		return nil
+	case creativerun.FieldReleaseTargetStatus:
+		m.ResetReleaseTargetStatus()
+		return nil
 	case creativerun.FieldAttemptCount:
 		m.ResetAttemptCount()
 		return nil
 	case creativerun.FieldAllowanceReserved:
 		m.ResetAllowanceReserved()
+		return nil
+	case creativerun.FieldProvisioningPhase:
+		m.ResetProvisioningPhase()
+		return nil
+	case creativerun.FieldProviderResultRecordedAt:
+		m.ResetProviderResultRecordedAt()
+		return nil
+	case creativerun.FieldSettlementAttemptCount:
+		m.ResetSettlementAttemptCount()
+		return nil
+	case creativerun.FieldReleaseAttemptCount:
+		m.ResetReleaseAttemptCount()
+		return nil
+	case creativerun.FieldNextReconcileAt:
+		m.ResetNextReconcileAt()
+		return nil
+	case creativerun.FieldLastReconcileError:
+		m.ResetLastReconcileError()
 		return nil
 	case creativerun.FieldVersion:
 		m.ResetVersion()
@@ -20170,6 +20673,914 @@ func (m *CreativeRunMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *CreativeRunMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown CreativeRun edge %s", name)
+}
+
+// CreativeRunOutboxMutation represents an operation that mutates the CreativeRunOutbox nodes in the graph.
+type CreativeRunOutboxMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int64
+	run_id           *string
+	operation        *string
+	status           *string
+	available_at     *time.Time
+	lease_token      *string
+	lease_until      *time.Time
+	attempt_count    *int
+	addattempt_count *int
+	last_error       *string
+	created_at       *time.Time
+	updated_at       *time.Time
+	clearedFields    map[string]struct{}
+	done             bool
+	oldValue         func(context.Context) (*CreativeRunOutbox, error)
+	predicates       []predicate.CreativeRunOutbox
+}
+
+var _ ent.Mutation = (*CreativeRunOutboxMutation)(nil)
+
+// creativerunoutboxOption allows management of the mutation configuration using functional options.
+type creativerunoutboxOption func(*CreativeRunOutboxMutation)
+
+// newCreativeRunOutboxMutation creates new mutation for the CreativeRunOutbox entity.
+func newCreativeRunOutboxMutation(c config, op Op, opts ...creativerunoutboxOption) *CreativeRunOutboxMutation {
+	m := &CreativeRunOutboxMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCreativeRunOutbox,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCreativeRunOutboxID sets the ID field of the mutation.
+func withCreativeRunOutboxID(id int64) creativerunoutboxOption {
+	return func(m *CreativeRunOutboxMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CreativeRunOutbox
+		)
+		m.oldValue = func(ctx context.Context) (*CreativeRunOutbox, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CreativeRunOutbox.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCreativeRunOutbox sets the old CreativeRunOutbox of the mutation.
+func withCreativeRunOutbox(node *CreativeRunOutbox) creativerunoutboxOption {
+	return func(m *CreativeRunOutboxMutation) {
+		m.oldValue = func(context.Context) (*CreativeRunOutbox, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CreativeRunOutboxMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CreativeRunOutboxMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CreativeRunOutboxMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CreativeRunOutboxMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CreativeRunOutbox.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetRunID sets the "run_id" field.
+func (m *CreativeRunOutboxMutation) SetRunID(s string) {
+	m.run_id = &s
+}
+
+// RunID returns the value of the "run_id" field in the mutation.
+func (m *CreativeRunOutboxMutation) RunID() (r string, exists bool) {
+	v := m.run_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRunID returns the old "run_id" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldRunID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRunID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRunID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRunID: %w", err)
+	}
+	return oldValue.RunID, nil
+}
+
+// ResetRunID resets all changes to the "run_id" field.
+func (m *CreativeRunOutboxMutation) ResetRunID() {
+	m.run_id = nil
+}
+
+// SetOperation sets the "operation" field.
+func (m *CreativeRunOutboxMutation) SetOperation(s string) {
+	m.operation = &s
+}
+
+// Operation returns the value of the "operation" field in the mutation.
+func (m *CreativeRunOutboxMutation) Operation() (r string, exists bool) {
+	v := m.operation
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperation returns the old "operation" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldOperation(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperation is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperation requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperation: %w", err)
+	}
+	return oldValue.Operation, nil
+}
+
+// ResetOperation resets all changes to the "operation" field.
+func (m *CreativeRunOutboxMutation) ResetOperation() {
+	m.operation = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *CreativeRunOutboxMutation) SetStatus(s string) {
+	m.status = &s
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *CreativeRunOutboxMutation) Status() (r string, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *CreativeRunOutboxMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetAvailableAt sets the "available_at" field.
+func (m *CreativeRunOutboxMutation) SetAvailableAt(t time.Time) {
+	m.available_at = &t
+}
+
+// AvailableAt returns the value of the "available_at" field in the mutation.
+func (m *CreativeRunOutboxMutation) AvailableAt() (r time.Time, exists bool) {
+	v := m.available_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAvailableAt returns the old "available_at" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldAvailableAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAvailableAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAvailableAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAvailableAt: %w", err)
+	}
+	return oldValue.AvailableAt, nil
+}
+
+// ResetAvailableAt resets all changes to the "available_at" field.
+func (m *CreativeRunOutboxMutation) ResetAvailableAt() {
+	m.available_at = nil
+}
+
+// SetLeaseToken sets the "lease_token" field.
+func (m *CreativeRunOutboxMutation) SetLeaseToken(s string) {
+	m.lease_token = &s
+}
+
+// LeaseToken returns the value of the "lease_token" field in the mutation.
+func (m *CreativeRunOutboxMutation) LeaseToken() (r string, exists bool) {
+	v := m.lease_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseToken returns the old "lease_token" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldLeaseToken(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseToken: %w", err)
+	}
+	return oldValue.LeaseToken, nil
+}
+
+// ClearLeaseToken clears the value of the "lease_token" field.
+func (m *CreativeRunOutboxMutation) ClearLeaseToken() {
+	m.lease_token = nil
+	m.clearedFields[creativerunoutbox.FieldLeaseToken] = struct{}{}
+}
+
+// LeaseTokenCleared returns if the "lease_token" field was cleared in this mutation.
+func (m *CreativeRunOutboxMutation) LeaseTokenCleared() bool {
+	_, ok := m.clearedFields[creativerunoutbox.FieldLeaseToken]
+	return ok
+}
+
+// ResetLeaseToken resets all changes to the "lease_token" field.
+func (m *CreativeRunOutboxMutation) ResetLeaseToken() {
+	m.lease_token = nil
+	delete(m.clearedFields, creativerunoutbox.FieldLeaseToken)
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (m *CreativeRunOutboxMutation) SetLeaseUntil(t time.Time) {
+	m.lease_until = &t
+}
+
+// LeaseUntil returns the value of the "lease_until" field in the mutation.
+func (m *CreativeRunOutboxMutation) LeaseUntil() (r time.Time, exists bool) {
+	v := m.lease_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseUntil returns the old "lease_until" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldLeaseUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseUntil: %w", err)
+	}
+	return oldValue.LeaseUntil, nil
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (m *CreativeRunOutboxMutation) ClearLeaseUntil() {
+	m.lease_until = nil
+	m.clearedFields[creativerunoutbox.FieldLeaseUntil] = struct{}{}
+}
+
+// LeaseUntilCleared returns if the "lease_until" field was cleared in this mutation.
+func (m *CreativeRunOutboxMutation) LeaseUntilCleared() bool {
+	_, ok := m.clearedFields[creativerunoutbox.FieldLeaseUntil]
+	return ok
+}
+
+// ResetLeaseUntil resets all changes to the "lease_until" field.
+func (m *CreativeRunOutboxMutation) ResetLeaseUntil() {
+	m.lease_until = nil
+	delete(m.clearedFields, creativerunoutbox.FieldLeaseUntil)
+}
+
+// SetAttemptCount sets the "attempt_count" field.
+func (m *CreativeRunOutboxMutation) SetAttemptCount(i int) {
+	m.attempt_count = &i
+	m.addattempt_count = nil
+}
+
+// AttemptCount returns the value of the "attempt_count" field in the mutation.
+func (m *CreativeRunOutboxMutation) AttemptCount() (r int, exists bool) {
+	v := m.attempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttemptCount returns the old "attempt_count" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldAttemptCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttemptCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttemptCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttemptCount: %w", err)
+	}
+	return oldValue.AttemptCount, nil
+}
+
+// AddAttemptCount adds i to the "attempt_count" field.
+func (m *CreativeRunOutboxMutation) AddAttemptCount(i int) {
+	if m.addattempt_count != nil {
+		*m.addattempt_count += i
+	} else {
+		m.addattempt_count = &i
+	}
+}
+
+// AddedAttemptCount returns the value that was added to the "attempt_count" field in this mutation.
+func (m *CreativeRunOutboxMutation) AddedAttemptCount() (r int, exists bool) {
+	v := m.addattempt_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttemptCount resets all changes to the "attempt_count" field.
+func (m *CreativeRunOutboxMutation) ResetAttemptCount() {
+	m.attempt_count = nil
+	m.addattempt_count = nil
+}
+
+// SetLastError sets the "last_error" field.
+func (m *CreativeRunOutboxMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *CreativeRunOutboxMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldLastError(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (m *CreativeRunOutboxMutation) ClearLastError() {
+	m.last_error = nil
+	m.clearedFields[creativerunoutbox.FieldLastError] = struct{}{}
+}
+
+// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
+func (m *CreativeRunOutboxMutation) LastErrorCleared() bool {
+	_, ok := m.clearedFields[creativerunoutbox.FieldLastError]
+	return ok
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *CreativeRunOutboxMutation) ResetLastError() {
+	m.last_error = nil
+	delete(m.clearedFields, creativerunoutbox.FieldLastError)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CreativeRunOutboxMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CreativeRunOutboxMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CreativeRunOutboxMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CreativeRunOutboxMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CreativeRunOutboxMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CreativeRunOutbox entity.
+// If the CreativeRunOutbox object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CreativeRunOutboxMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CreativeRunOutboxMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the CreativeRunOutboxMutation builder.
+func (m *CreativeRunOutboxMutation) Where(ps ...predicate.CreativeRunOutbox) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CreativeRunOutboxMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CreativeRunOutboxMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CreativeRunOutbox, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CreativeRunOutboxMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CreativeRunOutboxMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CreativeRunOutbox).
+func (m *CreativeRunOutboxMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CreativeRunOutboxMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.run_id != nil {
+		fields = append(fields, creativerunoutbox.FieldRunID)
+	}
+	if m.operation != nil {
+		fields = append(fields, creativerunoutbox.FieldOperation)
+	}
+	if m.status != nil {
+		fields = append(fields, creativerunoutbox.FieldStatus)
+	}
+	if m.available_at != nil {
+		fields = append(fields, creativerunoutbox.FieldAvailableAt)
+	}
+	if m.lease_token != nil {
+		fields = append(fields, creativerunoutbox.FieldLeaseToken)
+	}
+	if m.lease_until != nil {
+		fields = append(fields, creativerunoutbox.FieldLeaseUntil)
+	}
+	if m.attempt_count != nil {
+		fields = append(fields, creativerunoutbox.FieldAttemptCount)
+	}
+	if m.last_error != nil {
+		fields = append(fields, creativerunoutbox.FieldLastError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, creativerunoutbox.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, creativerunoutbox.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CreativeRunOutboxMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case creativerunoutbox.FieldRunID:
+		return m.RunID()
+	case creativerunoutbox.FieldOperation:
+		return m.Operation()
+	case creativerunoutbox.FieldStatus:
+		return m.Status()
+	case creativerunoutbox.FieldAvailableAt:
+		return m.AvailableAt()
+	case creativerunoutbox.FieldLeaseToken:
+		return m.LeaseToken()
+	case creativerunoutbox.FieldLeaseUntil:
+		return m.LeaseUntil()
+	case creativerunoutbox.FieldAttemptCount:
+		return m.AttemptCount()
+	case creativerunoutbox.FieldLastError:
+		return m.LastError()
+	case creativerunoutbox.FieldCreatedAt:
+		return m.CreatedAt()
+	case creativerunoutbox.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CreativeRunOutboxMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case creativerunoutbox.FieldRunID:
+		return m.OldRunID(ctx)
+	case creativerunoutbox.FieldOperation:
+		return m.OldOperation(ctx)
+	case creativerunoutbox.FieldStatus:
+		return m.OldStatus(ctx)
+	case creativerunoutbox.FieldAvailableAt:
+		return m.OldAvailableAt(ctx)
+	case creativerunoutbox.FieldLeaseToken:
+		return m.OldLeaseToken(ctx)
+	case creativerunoutbox.FieldLeaseUntil:
+		return m.OldLeaseUntil(ctx)
+	case creativerunoutbox.FieldAttemptCount:
+		return m.OldAttemptCount(ctx)
+	case creativerunoutbox.FieldLastError:
+		return m.OldLastError(ctx)
+	case creativerunoutbox.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case creativerunoutbox.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CreativeRunOutbox field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CreativeRunOutboxMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case creativerunoutbox.FieldRunID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRunID(v)
+		return nil
+	case creativerunoutbox.FieldOperation:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperation(v)
+		return nil
+	case creativerunoutbox.FieldStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case creativerunoutbox.FieldAvailableAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAvailableAt(v)
+		return nil
+	case creativerunoutbox.FieldLeaseToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseToken(v)
+		return nil
+	case creativerunoutbox.FieldLeaseUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseUntil(v)
+		return nil
+	case creativerunoutbox.FieldAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttemptCount(v)
+		return nil
+	case creativerunoutbox.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case creativerunoutbox.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case creativerunoutbox.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CreativeRunOutbox field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CreativeRunOutboxMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempt_count != nil {
+		fields = append(fields, creativerunoutbox.FieldAttemptCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CreativeRunOutboxMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case creativerunoutbox.FieldAttemptCount:
+		return m.AddedAttemptCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CreativeRunOutboxMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case creativerunoutbox.FieldAttemptCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttemptCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CreativeRunOutbox numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CreativeRunOutboxMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(creativerunoutbox.FieldLeaseToken) {
+		fields = append(fields, creativerunoutbox.FieldLeaseToken)
+	}
+	if m.FieldCleared(creativerunoutbox.FieldLeaseUntil) {
+		fields = append(fields, creativerunoutbox.FieldLeaseUntil)
+	}
+	if m.FieldCleared(creativerunoutbox.FieldLastError) {
+		fields = append(fields, creativerunoutbox.FieldLastError)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CreativeRunOutboxMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CreativeRunOutboxMutation) ClearField(name string) error {
+	switch name {
+	case creativerunoutbox.FieldLeaseToken:
+		m.ClearLeaseToken()
+		return nil
+	case creativerunoutbox.FieldLeaseUntil:
+		m.ClearLeaseUntil()
+		return nil
+	case creativerunoutbox.FieldLastError:
+		m.ClearLastError()
+		return nil
+	}
+	return fmt.Errorf("unknown CreativeRunOutbox nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CreativeRunOutboxMutation) ResetField(name string) error {
+	switch name {
+	case creativerunoutbox.FieldRunID:
+		m.ResetRunID()
+		return nil
+	case creativerunoutbox.FieldOperation:
+		m.ResetOperation()
+		return nil
+	case creativerunoutbox.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case creativerunoutbox.FieldAvailableAt:
+		m.ResetAvailableAt()
+		return nil
+	case creativerunoutbox.FieldLeaseToken:
+		m.ResetLeaseToken()
+		return nil
+	case creativerunoutbox.FieldLeaseUntil:
+		m.ResetLeaseUntil()
+		return nil
+	case creativerunoutbox.FieldAttemptCount:
+		m.ResetAttemptCount()
+		return nil
+	case creativerunoutbox.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case creativerunoutbox.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case creativerunoutbox.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CreativeRunOutbox field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CreativeRunOutboxMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CreativeRunOutboxMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CreativeRunOutboxMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CreativeRunOutboxMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CreativeRunOutboxMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CreativeRunOutboxMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CreativeRunOutboxMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown CreativeRunOutbox unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CreativeRunOutboxMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown CreativeRunOutbox edge %s", name)
 }
 
 // CreativeRunOutputMutation represents an operation that mutates the CreativeRunOutput nodes in the graph.

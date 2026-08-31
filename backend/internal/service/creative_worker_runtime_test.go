@@ -107,7 +107,7 @@ func (q *parallelCreativeQueue) Reserve(ctx context.Context, blockTimeout time.D
 	defer timer.Stop()
 	select {
 	case runID := <-q.ready:
-		return ReservedCreativeRun{RunID: runID}, nil
+		return ReservedCreativeRun{RunID: runID, LeaseToken: "test-lease"}, nil
 	case <-ctx.Done():
 		return ReservedCreativeRun{}, ctx.Err()
 	case <-timer.C:
@@ -115,11 +115,13 @@ func (q *parallelCreativeQueue) Reserve(ctx context.Context, blockTimeout time.D
 	}
 }
 
-func (q *parallelCreativeQueue) RequeueAfter(context.Context, string, time.Duration) error {
+func (q *parallelCreativeQueue) RequeueAfter(context.Context, string, string, time.Duration) error {
 	return nil
 }
-func (q *parallelCreativeQueue) Ack(context.Context, string) error       { return nil }
-func (q *parallelCreativeQueue) Heartbeat(context.Context, string) error { return nil }
+func (q *parallelCreativeQueue) Ack(context.Context, string, string) error { return nil }
+func (q *parallelCreativeQueue) Heartbeat(context.Context, string, string) (bool, error) {
+	return true, nil
+}
 func (q *parallelCreativeQueue) MoveDueDelayedToReady(context.Context, int) (int, error) {
 	return 0, nil
 }

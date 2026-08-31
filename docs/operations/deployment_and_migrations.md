@@ -149,6 +149,10 @@
 
 在线更新和安装脚本可以保留上一版二进制或镜像，但这只是应用回退。数据库迁移不会因镜像回退自动撤销；上线前必须确认新迁移对旧版本是否向后兼容。若 schema 已不兼容，应使用经过演练的数据库备份恢复或新增前向修复迁移，而不是手工删除 `schema_migrations` 记录。
 
+### 创作台 durable 状态与 outbox 迁移
+
+迁移 `257_creative_run_durable_settlement.sql` 为 `creative_runs` 增加 provisioning、provider 成功记录、settlement/release 重试与 reconciler 字段，创建 `creative_run_outbox`，并为每个用户/分组的 active `creative_studio` 托管 Key 增加部分唯一索引。它把既有 queued/running 任务回填为可继续入队的阶段，不改变 Redis 图片 TTL 边界。发布时应先执行迁移，再部署兼容旧状态的应用版本并启动 outbox/transient reconciler；观察 `settlement_pending`、`release_pending`、lease lost、result lost 和 outbox lag 后，再调高恢复告警阈值。
+
 升级完成后至少检查 `/health`、登录/API Key 鉴权、一个非流和流式网关请求、用量结算、关键后台任务及迁移表。保留旧产物和升级前备份，直到这些检查完成。
 
 相关文档：[系统架构](../architecture/system_architecture.md)、[配置边界](../interfaces/configuration.md)、[运维目录](index.md)。

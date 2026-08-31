@@ -12,12 +12,14 @@ var (
 	ErrCreativeQueueEmpty          = infraerrors.New(http.StatusNotFound, "CREATIVE_QUEUE_EMPTY", "creative queue is empty")
 	ErrCreativeAlreadyQueued       = infraerrors.New(http.StatusConflict, "CREATIVE_ALREADY_QUEUED", "creative run is already queued")
 	ErrCreativeLockNotAcquired     = infraerrors.New(http.StatusConflict, "CREATIVE_LOCK_NOT_ACQUIRED", "creative run lock was not acquired")
+	ErrCreativeLeaseLost           = infraerrors.New(http.StatusConflict, "CREATIVE_LEASE_LOST", "creative run lease is no longer owned")
 	ErrInvalidCreativeQueuePayload = infraerrors.New(http.StatusBadRequest, "CREATIVE_QUEUE_INVALID_PAYLOAD", "invalid creative queue payload")
 )
 
 // ReservedCreativeRun 是队列保留的一次任务。
 type ReservedCreativeRun struct {
-	RunID string
+	RunID      string
+	LeaseToken string
 }
 
 // CreativeRunJobLock 是任务级分布式锁。
@@ -27,7 +29,7 @@ type CreativeRunJobLock interface {
 
 // CreativeRunJobLockRefresher 是可选的锁续期能力；由具体锁实现按需提供。
 type CreativeRunJobLockRefresher interface {
-	Refresh(ctx context.Context, ttl time.Duration) error
+	Refresh(ctx context.Context, ttl time.Duration) (bool, error)
 }
 
 // CreativeRunQueue 是创作台任务的 Redis 队列抽象。
@@ -35,9 +37,9 @@ type CreativeRunJobLockRefresher interface {
 type CreativeRunQueue interface {
 	Enqueue(ctx context.Context, runID string) error
 	Reserve(ctx context.Context, blockTimeout time.Duration) (ReservedCreativeRun, error)
-	RequeueAfter(ctx context.Context, runID string, delay time.Duration) error
-	Ack(ctx context.Context, runID string) error
-	Heartbeat(ctx context.Context, runID string) error
+	RequeueAfter(ctx context.Context, runID, leaseToken string, delay time.Duration) error
+	Ack(ctx context.Context, runID, leaseToken string) error
+	Heartbeat(ctx context.Context, runID, leaseToken string) (bool, error)
 	MoveDueDelayedToReady(ctx context.Context, limit int) (int, error)
 	RecoverStaleActive(ctx context.Context, staleAfter time.Duration, limit int) (int, error)
 	TryAcquireJobLock(ctx context.Context, runID string, ttl time.Duration) (CreativeRunJobLock, bool, error)

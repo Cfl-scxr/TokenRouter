@@ -538,6 +538,20 @@ func (_u *CreativeRunUpdate) ClearErrorMessage() *CreativeRunUpdate {
 	return _u
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (_u *CreativeRunUpdate) SetReleaseTargetStatus(v string) *CreativeRunUpdate {
+	_u.mutation.SetReleaseTargetStatus(v)
+	return _u
+}
+
+// SetNillableReleaseTargetStatus sets the "release_target_status" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableReleaseTargetStatus(v *string) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetReleaseTargetStatus(*v)
+	}
+	return _u
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (_u *CreativeRunUpdate) SetAttemptCount(v int) *CreativeRunUpdate {
 	_u.mutation.ResetAttemptCount()
@@ -570,6 +584,122 @@ func (_u *CreativeRunUpdate) SetNillableAllowanceReserved(v *bool) *CreativeRunU
 	if v != nil {
 		_u.SetAllowanceReserved(*v)
 	}
+	return _u
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (_u *CreativeRunUpdate) SetProvisioningPhase(v string) *CreativeRunUpdate {
+	_u.mutation.SetProvisioningPhase(v)
+	return _u
+}
+
+// SetNillableProvisioningPhase sets the "provisioning_phase" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableProvisioningPhase(v *string) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetProvisioningPhase(*v)
+	}
+	return _u
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (_u *CreativeRunUpdate) SetProviderResultRecordedAt(v time.Time) *CreativeRunUpdate {
+	_u.mutation.SetProviderResultRecordedAt(v)
+	return _u
+}
+
+// SetNillableProviderResultRecordedAt sets the "provider_result_recorded_at" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableProviderResultRecordedAt(v *time.Time) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetProviderResultRecordedAt(*v)
+	}
+	return _u
+}
+
+// ClearProviderResultRecordedAt clears the value of the "provider_result_recorded_at" field.
+func (_u *CreativeRunUpdate) ClearProviderResultRecordedAt() *CreativeRunUpdate {
+	_u.mutation.ClearProviderResultRecordedAt()
+	return _u
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (_u *CreativeRunUpdate) SetSettlementAttemptCount(v int) *CreativeRunUpdate {
+	_u.mutation.ResetSettlementAttemptCount()
+	_u.mutation.SetSettlementAttemptCount(v)
+	return _u
+}
+
+// SetNillableSettlementAttemptCount sets the "settlement_attempt_count" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableSettlementAttemptCount(v *int) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetSettlementAttemptCount(*v)
+	}
+	return _u
+}
+
+// AddSettlementAttemptCount adds value to the "settlement_attempt_count" field.
+func (_u *CreativeRunUpdate) AddSettlementAttemptCount(v int) *CreativeRunUpdate {
+	_u.mutation.AddSettlementAttemptCount(v)
+	return _u
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (_u *CreativeRunUpdate) SetReleaseAttemptCount(v int) *CreativeRunUpdate {
+	_u.mutation.ResetReleaseAttemptCount()
+	_u.mutation.SetReleaseAttemptCount(v)
+	return _u
+}
+
+// SetNillableReleaseAttemptCount sets the "release_attempt_count" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableReleaseAttemptCount(v *int) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetReleaseAttemptCount(*v)
+	}
+	return _u
+}
+
+// AddReleaseAttemptCount adds value to the "release_attempt_count" field.
+func (_u *CreativeRunUpdate) AddReleaseAttemptCount(v int) *CreativeRunUpdate {
+	_u.mutation.AddReleaseAttemptCount(v)
+	return _u
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (_u *CreativeRunUpdate) SetNextReconcileAt(v time.Time) *CreativeRunUpdate {
+	_u.mutation.SetNextReconcileAt(v)
+	return _u
+}
+
+// SetNillableNextReconcileAt sets the "next_reconcile_at" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableNextReconcileAt(v *time.Time) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetNextReconcileAt(*v)
+	}
+	return _u
+}
+
+// ClearNextReconcileAt clears the value of the "next_reconcile_at" field.
+func (_u *CreativeRunUpdate) ClearNextReconcileAt() *CreativeRunUpdate {
+	_u.mutation.ClearNextReconcileAt()
+	return _u
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (_u *CreativeRunUpdate) SetLastReconcileError(v string) *CreativeRunUpdate {
+	_u.mutation.SetLastReconcileError(v)
+	return _u
+}
+
+// SetNillableLastReconcileError sets the "last_reconcile_error" field if the given value is not nil.
+func (_u *CreativeRunUpdate) SetNillableLastReconcileError(v *string) *CreativeRunUpdate {
+	if v != nil {
+		_u.SetLastReconcileError(*v)
+	}
+	return _u
+}
+
+// ClearLastReconcileError clears the value of the "last_reconcile_error" field.
+func (_u *CreativeRunUpdate) ClearLastReconcileError() *CreativeRunUpdate {
+	_u.mutation.ClearLastReconcileError()
 	return _u
 }
 
@@ -757,6 +887,16 @@ func (_u *CreativeRunUpdate) check() error {
 			return &ValidationError{Name: "error_code", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.error_code": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReleaseTargetStatus(); ok {
+		if err := creativerun.ReleaseTargetStatusValidator(v); err != nil {
+			return &ValidationError{Name: "release_target_status", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.release_target_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ProvisioningPhase(); ok {
+		if err := creativerun.ProvisioningPhaseValidator(v); err != nil {
+			return &ValidationError{Name: "provisioning_phase", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.provisioning_phase": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -918,6 +1058,9 @@ func (_u *CreativeRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if _u.mutation.ErrorMessageCleared() {
 		_spec.ClearField(creativerun.FieldErrorMessage, field.TypeString)
 	}
+	if value, ok := _u.mutation.ReleaseTargetStatus(); ok {
+		_spec.SetField(creativerun.FieldReleaseTargetStatus, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.AttemptCount(); ok {
 		_spec.SetField(creativerun.FieldAttemptCount, field.TypeInt, value)
 	}
@@ -926,6 +1069,39 @@ func (_u *CreativeRunUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if value, ok := _u.mutation.AllowanceReserved(); ok {
 		_spec.SetField(creativerun.FieldAllowanceReserved, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ProvisioningPhase(); ok {
+		_spec.SetField(creativerun.FieldProvisioningPhase, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ProviderResultRecordedAt(); ok {
+		_spec.SetField(creativerun.FieldProviderResultRecordedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ProviderResultRecordedAtCleared() {
+		_spec.ClearField(creativerun.FieldProviderResultRecordedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SettlementAttemptCount(); ok {
+		_spec.SetField(creativerun.FieldSettlementAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSettlementAttemptCount(); ok {
+		_spec.AddField(creativerun.FieldSettlementAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ReleaseAttemptCount(); ok {
+		_spec.SetField(creativerun.FieldReleaseAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedReleaseAttemptCount(); ok {
+		_spec.AddField(creativerun.FieldReleaseAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.NextReconcileAt(); ok {
+		_spec.SetField(creativerun.FieldNextReconcileAt, field.TypeTime, value)
+	}
+	if _u.mutation.NextReconcileAtCleared() {
+		_spec.ClearField(creativerun.FieldNextReconcileAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastReconcileError(); ok {
+		_spec.SetField(creativerun.FieldLastReconcileError, field.TypeString, value)
+	}
+	if _u.mutation.LastReconcileErrorCleared() {
+		_spec.ClearField(creativerun.FieldLastReconcileError, field.TypeString)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(creativerun.FieldVersion, field.TypeInt64, value)
@@ -1479,6 +1655,20 @@ func (_u *CreativeRunUpdateOne) ClearErrorMessage() *CreativeRunUpdateOne {
 	return _u
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (_u *CreativeRunUpdateOne) SetReleaseTargetStatus(v string) *CreativeRunUpdateOne {
+	_u.mutation.SetReleaseTargetStatus(v)
+	return _u
+}
+
+// SetNillableReleaseTargetStatus sets the "release_target_status" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableReleaseTargetStatus(v *string) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetReleaseTargetStatus(*v)
+	}
+	return _u
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (_u *CreativeRunUpdateOne) SetAttemptCount(v int) *CreativeRunUpdateOne {
 	_u.mutation.ResetAttemptCount()
@@ -1511,6 +1701,122 @@ func (_u *CreativeRunUpdateOne) SetNillableAllowanceReserved(v *bool) *CreativeR
 	if v != nil {
 		_u.SetAllowanceReserved(*v)
 	}
+	return _u
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (_u *CreativeRunUpdateOne) SetProvisioningPhase(v string) *CreativeRunUpdateOne {
+	_u.mutation.SetProvisioningPhase(v)
+	return _u
+}
+
+// SetNillableProvisioningPhase sets the "provisioning_phase" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableProvisioningPhase(v *string) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetProvisioningPhase(*v)
+	}
+	return _u
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (_u *CreativeRunUpdateOne) SetProviderResultRecordedAt(v time.Time) *CreativeRunUpdateOne {
+	_u.mutation.SetProviderResultRecordedAt(v)
+	return _u
+}
+
+// SetNillableProviderResultRecordedAt sets the "provider_result_recorded_at" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableProviderResultRecordedAt(v *time.Time) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetProviderResultRecordedAt(*v)
+	}
+	return _u
+}
+
+// ClearProviderResultRecordedAt clears the value of the "provider_result_recorded_at" field.
+func (_u *CreativeRunUpdateOne) ClearProviderResultRecordedAt() *CreativeRunUpdateOne {
+	_u.mutation.ClearProviderResultRecordedAt()
+	return _u
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (_u *CreativeRunUpdateOne) SetSettlementAttemptCount(v int) *CreativeRunUpdateOne {
+	_u.mutation.ResetSettlementAttemptCount()
+	_u.mutation.SetSettlementAttemptCount(v)
+	return _u
+}
+
+// SetNillableSettlementAttemptCount sets the "settlement_attempt_count" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableSettlementAttemptCount(v *int) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetSettlementAttemptCount(*v)
+	}
+	return _u
+}
+
+// AddSettlementAttemptCount adds value to the "settlement_attempt_count" field.
+func (_u *CreativeRunUpdateOne) AddSettlementAttemptCount(v int) *CreativeRunUpdateOne {
+	_u.mutation.AddSettlementAttemptCount(v)
+	return _u
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (_u *CreativeRunUpdateOne) SetReleaseAttemptCount(v int) *CreativeRunUpdateOne {
+	_u.mutation.ResetReleaseAttemptCount()
+	_u.mutation.SetReleaseAttemptCount(v)
+	return _u
+}
+
+// SetNillableReleaseAttemptCount sets the "release_attempt_count" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableReleaseAttemptCount(v *int) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetReleaseAttemptCount(*v)
+	}
+	return _u
+}
+
+// AddReleaseAttemptCount adds value to the "release_attempt_count" field.
+func (_u *CreativeRunUpdateOne) AddReleaseAttemptCount(v int) *CreativeRunUpdateOne {
+	_u.mutation.AddReleaseAttemptCount(v)
+	return _u
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (_u *CreativeRunUpdateOne) SetNextReconcileAt(v time.Time) *CreativeRunUpdateOne {
+	_u.mutation.SetNextReconcileAt(v)
+	return _u
+}
+
+// SetNillableNextReconcileAt sets the "next_reconcile_at" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableNextReconcileAt(v *time.Time) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetNextReconcileAt(*v)
+	}
+	return _u
+}
+
+// ClearNextReconcileAt clears the value of the "next_reconcile_at" field.
+func (_u *CreativeRunUpdateOne) ClearNextReconcileAt() *CreativeRunUpdateOne {
+	_u.mutation.ClearNextReconcileAt()
+	return _u
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (_u *CreativeRunUpdateOne) SetLastReconcileError(v string) *CreativeRunUpdateOne {
+	_u.mutation.SetLastReconcileError(v)
+	return _u
+}
+
+// SetNillableLastReconcileError sets the "last_reconcile_error" field if the given value is not nil.
+func (_u *CreativeRunUpdateOne) SetNillableLastReconcileError(v *string) *CreativeRunUpdateOne {
+	if v != nil {
+		_u.SetLastReconcileError(*v)
+	}
+	return _u
+}
+
+// ClearLastReconcileError clears the value of the "last_reconcile_error" field.
+func (_u *CreativeRunUpdateOne) ClearLastReconcileError() *CreativeRunUpdateOne {
+	_u.mutation.ClearLastReconcileError()
 	return _u
 }
 
@@ -1711,6 +2017,16 @@ func (_u *CreativeRunUpdateOne) check() error {
 			return &ValidationError{Name: "error_code", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.error_code": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ReleaseTargetStatus(); ok {
+		if err := creativerun.ReleaseTargetStatusValidator(v); err != nil {
+			return &ValidationError{Name: "release_target_status", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.release_target_status": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ProvisioningPhase(); ok {
+		if err := creativerun.ProvisioningPhaseValidator(v); err != nil {
+			return &ValidationError{Name: "provisioning_phase", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.provisioning_phase": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -1889,6 +2205,9 @@ func (_u *CreativeRunUpdateOne) sqlSave(ctx context.Context) (_node *CreativeRun
 	if _u.mutation.ErrorMessageCleared() {
 		_spec.ClearField(creativerun.FieldErrorMessage, field.TypeString)
 	}
+	if value, ok := _u.mutation.ReleaseTargetStatus(); ok {
+		_spec.SetField(creativerun.FieldReleaseTargetStatus, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.AttemptCount(); ok {
 		_spec.SetField(creativerun.FieldAttemptCount, field.TypeInt, value)
 	}
@@ -1897,6 +2216,39 @@ func (_u *CreativeRunUpdateOne) sqlSave(ctx context.Context) (_node *CreativeRun
 	}
 	if value, ok := _u.mutation.AllowanceReserved(); ok {
 		_spec.SetField(creativerun.FieldAllowanceReserved, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ProvisioningPhase(); ok {
+		_spec.SetField(creativerun.FieldProvisioningPhase, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ProviderResultRecordedAt(); ok {
+		_spec.SetField(creativerun.FieldProviderResultRecordedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ProviderResultRecordedAtCleared() {
+		_spec.ClearField(creativerun.FieldProviderResultRecordedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.SettlementAttemptCount(); ok {
+		_spec.SetField(creativerun.FieldSettlementAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedSettlementAttemptCount(); ok {
+		_spec.AddField(creativerun.FieldSettlementAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ReleaseAttemptCount(); ok {
+		_spec.SetField(creativerun.FieldReleaseAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedReleaseAttemptCount(); ok {
+		_spec.AddField(creativerun.FieldReleaseAttemptCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.NextReconcileAt(); ok {
+		_spec.SetField(creativerun.FieldNextReconcileAt, field.TypeTime, value)
+	}
+	if _u.mutation.NextReconcileAtCleared() {
+		_spec.ClearField(creativerun.FieldNextReconcileAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.LastReconcileError(); ok {
+		_spec.SetField(creativerun.FieldLastReconcileError, field.TypeString, value)
+	}
+	if _u.mutation.LastReconcileErrorCleared() {
+		_spec.ClearField(creativerun.FieldLastReconcileError, field.TypeString)
 	}
 	if value, ok := _u.mutation.Version(); ok {
 		_spec.SetField(creativerun.FieldVersion, field.TypeInt64, value)

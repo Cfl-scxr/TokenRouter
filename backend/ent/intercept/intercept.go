@@ -20,6 +20,7 @@ import (
 	"github.com/TokenFlux/TokenRouter/ent/batchimageitem"
 	"github.com/TokenFlux/TokenRouter/ent/batchimagejob"
 	"github.com/TokenFlux/TokenRouter/ent/creativerun"
+	"github.com/TokenFlux/TokenRouter/ent/creativerunoutbox"
 	"github.com/TokenFlux/TokenRouter/ent/creativerunoutput"
 	"github.com/TokenFlux/TokenRouter/ent/datasharesession"
 	"github.com/TokenFlux/TokenRouter/ent/errorpassthroughrule"
@@ -434,6 +435,33 @@ func (f TraverseCreativeRun) Traverse(ctx context.Context, q ent.Query) error {
 		return f(ctx, q)
 	}
 	return fmt.Errorf("unexpected query type %T. expect *ent.CreativeRunQuery", q)
+}
+
+// The CreativeRunOutboxFunc type is an adapter to allow the use of ordinary function as a Querier.
+type CreativeRunOutboxFunc func(context.Context, *ent.CreativeRunOutboxQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f CreativeRunOutboxFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.CreativeRunOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.CreativeRunOutboxQuery", q)
+}
+
+// The TraverseCreativeRunOutbox type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseCreativeRunOutbox func(context.Context, *ent.CreativeRunOutboxQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseCreativeRunOutbox) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseCreativeRunOutbox) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.CreativeRunOutboxQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.CreativeRunOutboxQuery", q)
 }
 
 // The CreativeRunOutputFunc type is an adapter to allow the use of ordinary function as a Querier.
@@ -1354,6 +1382,8 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.BatchImageJobQuery, predicate.BatchImageJob, batchimagejob.OrderOption]{typ: ent.TypeBatchImageJob, tq: q}, nil
 	case *ent.CreativeRunQuery:
 		return &query[*ent.CreativeRunQuery, predicate.CreativeRun, creativerun.OrderOption]{typ: ent.TypeCreativeRun, tq: q}, nil
+	case *ent.CreativeRunOutboxQuery:
+		return &query[*ent.CreativeRunOutboxQuery, predicate.CreativeRunOutbox, creativerunoutbox.OrderOption]{typ: ent.TypeCreativeRunOutbox, tq: q}, nil
 	case *ent.CreativeRunOutputQuery:
 		return &query[*ent.CreativeRunOutputQuery, predicate.CreativeRunOutput, creativerunoutput.OrderOption]{typ: ent.TypeCreativeRunOutput, tq: q}, nil
 	case *ent.DataShareSessionQuery:

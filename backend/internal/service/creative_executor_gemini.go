@@ -87,14 +87,20 @@ func (e *CreativeExecutor) executeGemini(ctx context.Context, run CreativeRun, p
 		if apiKey == "" {
 			return nil, creativeNonRetryableError("gemini api_key not configured")
 		}
-		baseURL := e.gateway.validateGeminiBaseURL(account.GetGeminiBaseURL(geminicli.AIStudioBaseURL))
+		baseURL, validateErr := e.gateway.validateGeminiBaseURL(account.GetGeminiBaseURL(geminicli.AIStudioBaseURL))
+		if validateErr != nil {
+			return nil, creativeNonRetryableError("gemini base url invalid: %s", validateErr.Error())
+		}
 		targetURL, err = buildGeminiAIStudioModelActionURL(baseURL, upstreamModel, "generateContent", false)
 		if err != nil {
 			return nil, creativeNonRetryableError("build gemini url: %s", err.Error())
 		}
 	default:
 		// OAuth（无 project_id）：AI Studio Bearer 模式。
-		baseURL := e.gateway.validateGeminiBaseURL(account.GetGeminiBaseURL(geminicli.AIStudioBaseURL))
+		baseURL, validateErr := e.gateway.validateGeminiBaseURL(account.GetGeminiBaseURL(geminicli.AIStudioBaseURL))
+		if validateErr != nil {
+			return nil, creativeNonRetryableError("gemini base url invalid: %s", validateErr.Error())
+		}
 		targetURL, err = buildGeminiAIStudioModelActionURL(baseURL, upstreamModel, "generateContent", false)
 		if err != nil {
 			return nil, creativeNonRetryableError("build gemini url: %s", err.Error())
@@ -134,13 +140,16 @@ func (e *CreativeExecutor) executeGemini(ctx context.Context, run CreativeRun, p
 	return parseCreativeGeminiImageOutputs(respBody, run.RequestedOutputCount)
 }
 
-// validateGeminiBaseURL 校验 Gemini base URL；失败时回退官方 AI Studio 地址。
-func (s *OpenAIGatewayService) validateGeminiBaseURL(raw string) string {
+// validateGeminiBaseURL 校验 Gemini base URL；失败时直接返回错误，禁止改变数据发送目标。
+func (s *OpenAIGatewayService) validateGeminiBaseURL(raw string) (string, error) {
 	validated, err := s.validateUpstreamBaseURL(raw)
-	if err != nil || strings.TrimSpace(validated) == "" {
-		return geminicli.AIStudioBaseURL
+	if err != nil {
+		return "", err
 	}
-	return validated
+	if strings.TrimSpace(validated) == "" {
+		return "", errors.New("gemini base url is empty")
+	}
+	return validated, nil
 }
 
 // applyGeminiAuth 按账号类型设置鉴权头：apikey 用 x-goog-api-key，其余用 Bearer token。

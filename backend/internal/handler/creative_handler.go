@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/base64"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -15,7 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// 创作台 multipart 单字段大小上限：与配置的单文件上限（默认 32 MiB）对齐并留出头部的余量。
+// 创作台 multipart 单字段大小上限：配置值通过 limit+1 读取检测，避免静默截断。
 const creativeMaxUploadPartSize = 40 << 20
 
 // CreativeHandler 处理创作台用户侧请求。
@@ -54,6 +56,16 @@ func (h *CreativeHandler) ListModels(c *gin.Context) {
 	response.Success(c, got.Data)
 }
 
+// ListCapabilities 返回创作台输入限制与允许的图片 MIME 类型。
+// GET /api/v1/creative/capabilities
+func (h *CreativeHandler) ListCapabilities(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	response.Success(c, h.service.GetCapabilities(c.Request.Context()))
+}
+
 // creativeCreateRunRequest 是创建任务 multipart 报文的解析结果。
 type creativeCreateRunRequest struct {
 	GroupID       int64
@@ -82,8 +94,16 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	req, err := parseCreativeCreateRunMultipart(c)
+	partLimit := int64(creativeMaxUploadPartSize)
+	if h.service != nil && h.service.MaxAssetBytes() > 0 {
+		partLimit = h.service.MaxAssetBytes()
+	}
+	req, err := parseCreativeCreateRunMultipart(c, partLimit)
 	if err != nil {
+		if errors.Is(err, service.ErrCreativeAssetTooLarge) {
+			response.ErrorFrom(c, err)
+			return
+		}
 		response.ErrorFrom(c, service.ErrCreativeInvalidParams)
 		return
 	}
@@ -111,7 +131,7 @@ func (h *CreativeHandler) CreateRun(c *gin.Context) {
 // 字段 group_id/model/operation/prompt/image_size/aspect_ratio/quality/background/
 // thinking_level，
 // 文件字段 source_images（多文件）与 mask（单文件）。只接受上传文件，不接受远程 URL。
-func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest, error) {
+func parseCreativeCreateRunMultipart(c *gin.Context, partLimit int64) (*creativeCreateRunRequest, error) {
 	contentType := c.GetHeader("Content-Type")
 	_, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -138,10 +158,16 @@ func parseCreativeCreateRunMultipart(c *gin.Context) (*creativeCreateRunRequest,
 		}
 		fileName := strings.TrimSpace(part.FileName())
 		if fileName != "" {
-			data, readErr := io.ReadAll(io.LimitReader(part, creativeMaxUploadPartSize))
+			if partLimit <= 0 {
+				partLimit = creativeMaxUploadPartSize
+			}
+			data, readErr := io.ReadAll(io.LimitReader(part, partLimit+1))
 			_ = part.Close()
 			if readErr != nil {
 				return nil, readErr
+			}
+			if int64(len(data)) > partLimit {
+				return nil, service.ErrCreativeAssetTooLarge
 			}
 			partMIME := normalizeCreativeUploadMime(strings.TrimSpace(part.Header.Get("Content-Type")), data)
 			switch {
@@ -243,6 +269,56 @@ func (h *CreativeHandler) ListRuns(c *gin.Context) {
 	}
 	// 面板 envelope 的 data 直接放数组，前端按数组或 {items,total} 宽容解析。
 	response.Success(c, got.Data)
+}
+
+// ListActiveRuns 返回所有尚未进入可交付终态的任务，使用不透明游标分页。
+// GET /api/v1/creative/runs/active?limit=100&cursor=<opaque>
+func (h *CreativeHandler) ListActiveRuns(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	scope, err := creativeRunScopeFromRequest(c, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	if limit <= 0 || limit > 100 {
+		limit = 100
+	}
+	offset := 0
+	if rawCursor := strings.TrimSpace(c.Query("cursor")); rawCursor != "" {
+		decoded, decodeErr := base64.RawURLEncoding.DecodeString(rawCursor)
+		if decodeErr != nil {
+			response.ErrorFrom(c, service.ErrCreativeInvalidParams)
+			return
+		}
+		offset, err = strconv.Atoi(string(decoded))
+		if err != nil || offset < 0 {
+			response.ErrorFrom(c, service.ErrCreativeInvalidParams)
+			return
+		}
+	}
+	got, err := h.service.ListRuns(c.Request.Context(), scope, service.CreativeRunFilter{
+		Status: "active",
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	nextCursor := ""
+	if got.HasMore {
+		nextCursor = base64.RawURLEncoding.EncodeToString([]byte(strconv.Itoa(offset + len(got.Data))))
+	}
+	response.Success(c, gin.H{
+		"items":       got.Data,
+		"next_cursor": nextCursor,
+		"has_more":    got.HasMore,
+	})
 }
 
 // GetRun 返回单个任务详情。

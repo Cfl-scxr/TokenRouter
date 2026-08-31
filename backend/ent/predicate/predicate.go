@@ -42,6 +42,9 @@ type BatchImageJob func(*sql.Selector)
 // CreativeRun is the predicate function for creativerun builders.
 type CreativeRun func(*sql.Selector)
 
+// CreativeRunOutbox is the predicate function for creativerunoutbox builders.
+type CreativeRunOutbox func(*sql.Selector)
+
 // CreativeRunOutput is the predicate function for creativerunoutput builders.
 type CreativeRunOutput func(*sql.Selector)
 

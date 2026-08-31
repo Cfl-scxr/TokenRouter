@@ -14,6 +14,8 @@ vi.mock('vue-i18n', () => ({
 vi.mock('@/api/creative', () => ({
   CREATIVE_RUN_TERMINAL_STATUSES: ['succeeded', 'failed', 'cancelled', 'result_lost'],
   getCreativeModels: vi.fn(),
+  getCreativeCapabilities: vi.fn(),
+  getCreativeActiveRuns: vi.fn(),
   createCreativeRun: vi.fn(),
   getCreativeRuns: vi.fn(),
   getCreativeRun: vi.fn(),
@@ -101,6 +103,14 @@ describe('useCreativeStudio', () => {
     localStorage.clear()
 
     mockedApi.getCreativeModels.mockResolvedValue([{ ...MODEL }])
+    mockedApi.getCreativeCapabilities.mockResolvedValue({
+      max_prompt_chars: 8000,
+      max_asset_bytes: 33554432,
+      max_total_input_bytes: 67108864,
+      max_mask_bytes: 4194304,
+      allowed_mime_types: ['image/png', 'image/jpeg', 'image/webp'],
+    })
+    mockedApi.getCreativeActiveRuns.mockResolvedValue({ items: [], next_cursor: '', has_more: false })
     mockedApi.createCreativeRun.mockResolvedValue(makeRun({ id: 'run-1', status: 'queued' }))
     mockedApi.getCreativeRuns.mockResolvedValue({ items: [], total: 0 })
     mockedApi.getCreativeRun.mockResolvedValue(makeRun({ id: 'run-1', status: 'succeeded' }))
@@ -314,8 +324,8 @@ describe('useCreativeStudio', () => {
       studio.operation.value = 'inpaint'
 
       const ok = await studio.createRun({
-        sourceBlobs: [new Blob(['src'])],
-        maskBlob: new Blob(['mask']),
+        sourceBlobs: [new Blob(['src'], { type: 'image/png' })],
+        maskBlob: new Blob(['mask'], { type: 'image/png' }),
       })
 
       expect(ok).toBe(true)
@@ -790,6 +800,23 @@ describe('useCreativeStudio', () => {
   })
 
   describe('refreshHistory', () => {
+    it('通过 active runs 游标接管不在最近历史页的任务', async () => {
+      const { studio } = await setupStudio()
+      const recent = makeRun({ id: 'recent-run', status: 'succeeded' })
+      const olderActive = makeRun({ id: 'older-active', status: 'settlement_pending', outputs: [] })
+      mockedApi.getCreativeRuns.mockResolvedValue({ items: [recent], total: 21 })
+      mockedApi.getCreativeActiveRuns
+        .mockResolvedValueOnce({ items: [olderActive], next_cursor: 'next', has_more: true })
+        .mockResolvedValueOnce({ items: [], next_cursor: '', has_more: false })
+
+      await studio.refreshHistory()
+
+      expect(studio.runHistory.value.map((run) => run.id)).toEqual(['recent-run', 'older-active'])
+      expect(studio.polling.value).toBe(true)
+      expect(mockedApi.getCreativeActiveRuns).toHaveBeenNthCalledWith(1, currentWorkspaceId(), undefined, 100)
+      expect(mockedApi.getCreativeActiveRuns).toHaveBeenNthCalledWith(2, currentWorkspaceId(), 'next', 100)
+    })
+
     it('工作区本地存储不可用时不回退到共享历史', async () => {
       const { studio } = await setupStudio()
       vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

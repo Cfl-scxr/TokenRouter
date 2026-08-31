@@ -10,11 +10,14 @@ import { useI18n } from 'vue-i18n'
 import {
   CREATIVE_RUN_TERMINAL_STATUSES,
   createCreativeRun,
+  getCreativeActiveRuns,
+  getCreativeCapabilities,
   getCreativeModels,
   getCreativeRunOutputContent,
   getCreativeRuns,
   ackCreativeRunOutput,
   type CreativeModelOption,
+  type CreativeCapabilities,
   type CreativeOperation,
   type CreativeRun,
 } from '@/api/creative'
@@ -52,8 +55,18 @@ interface CreativeSelectionSettings {
 }
 
 const SETTINGS_KEY = 'creative:selection'
-const PROMPT_MAX_LENGTH = 8000
+const DEFAULT_CREATIVE_CAPABILITIES: CreativeCapabilities = {
+  max_prompt_chars: 8000,
+  max_asset_bytes: 33554432,
+  max_total_input_bytes: 67108864,
+  max_mask_bytes: 4194304,
+  allowed_mime_types: ['image/png', 'image/jpeg', 'image/webp'],
+}
 const SETTINGS_SAVE_DEBOUNCE = 300
+
+function truncatePrompt(value: string, maxChars = DEFAULT_CREATIVE_CAPABILITIES.max_prompt_chars): string {
+  return Array.from(value).slice(0, maxChars).join('')
+}
 
 // 所有进行中任务共享一次列表轮询；生图通常耗时 1–3 分钟，无需前置快速轮询。
 const POLL_INTERVAL = 3000
@@ -78,6 +91,7 @@ export function useCreativeStudio() {
   // ==================== 状态 ====================
 
   const models = ref<CreativeModelOption[]>([])
+  const capabilities = ref<CreativeCapabilities>({ ...DEFAULT_CREATIVE_CAPABILITIES })
   const loadingModels = ref(false)
   const selectedOptionKey = ref('')
   const operation = ref<CreativeOperation>('generate')
@@ -171,7 +185,7 @@ export function useCreativeStudio() {
     if (!operationOptions.value.includes(operation.value)) return false
     // 提示词为空（纯空白）时禁止提交
     if (prompt.value.trim().length === 0) return false
-    if (prompt.value.length > PROMPT_MAX_LENGTH) return false
+    if (Array.from(prompt.value).length > capabilities.value.max_prompt_chars) return false
     // 源图 / mask 由画布在点击生成时即时收集，这里不做前置拦截
     return true
   })
@@ -183,6 +197,13 @@ export function useCreativeStudio() {
     loadingModels.value = true
     try {
       models.value = await getCreativeModels()
+      if (typeof getCreativeCapabilities === 'function') {
+        try {
+          capabilities.value = await getCreativeCapabilities()
+        } catch (capabilityError) {
+          console.error('Failed to load creative capabilities:', capabilityError)
+        }
+      }
       await restoreSettings()
     } catch (e) {
       console.error('Failed to load creative models:', e)
@@ -206,7 +227,7 @@ export function useCreativeStudio() {
       if (typeof saved.quality === 'string') quality.value = saved.quality
       if (typeof saved.background === 'string') background.value = saved.background
       if (typeof saved.thinkingLevel === 'string') thinkingLevel.value = saved.thinkingLevel
-      if (typeof saved.prompt === 'string') prompt.value = saved.prompt.slice(0, PROMPT_MAX_LENGTH)
+      if (typeof saved.prompt === 'string') prompt.value = truncatePrompt(saved.prompt, capabilities.value.max_prompt_chars)
       normalizeSelection()
     } catch (e) {
       console.error('Failed to restore creative settings:', e)
@@ -264,7 +285,7 @@ export function useCreativeStudio() {
       quality: quality.value,
       background: background.value,
       thinkingLevel: thinkingLevel.value,
-      prompt: prompt.value.slice(0, PROMPT_MAX_LENGTH),
+      prompt: truncatePrompt(prompt.value, capabilities.value.max_prompt_chars),
     }
   }
 
@@ -393,7 +414,7 @@ export function useCreativeStudio() {
       error.value = t('creative.error.operationNotSupported')
       return false
     }
-    if (prompt.value.length > PROMPT_MAX_LENGTH) {
+    if (Array.from(prompt.value).length > capabilities.value.max_prompt_chars) {
       error.value = t('creative.error.promptTooLong')
       return false
     }
@@ -407,6 +428,22 @@ export function useCreativeStudio() {
     }
     if (exported.sourceBlobs.length > maxReferenceImages.value) {
       error.value = t('creative.error.referenceLimit', { max: maxReferenceImages.value })
+      return false
+    }
+    const allowedMIMEs = new Set(capabilities.value.allowed_mime_types)
+    const totalInputBytes = exported.sourceBlobs.reduce((sum, blob) => sum + blob.size, 0) + (exported.maskBlob?.size ?? 0)
+    if (totalInputBytes > capabilities.value.max_total_input_bytes) {
+      error.value = t('creative.error.assetTooLarge')
+      return false
+    }
+    for (const blob of exported.sourceBlobs) {
+      if (blob.size > capabilities.value.max_asset_bytes || (blob.type && !allowedMIMEs.has(blob.type))) {
+        error.value = t('creative.error.assetTooLarge')
+        return false
+      }
+    }
+    if (exported.maskBlob && (exported.maskBlob.size > capabilities.value.max_mask_bytes || exported.maskBlob.type !== 'image/png')) {
+      error.value = t('creative.error.assetTooLarge')
       return false
     }
 
@@ -530,6 +567,21 @@ export function useCreativeStudio() {
     return task
   }
 
+  async function fetchOutputWithRetry(runId: string, outputIndex: number, workspaceId: string): Promise<Blob> {
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await getCreativeRunOutputContent(runId, outputIndex, workspaceId)
+      } catch (error) {
+        const status = Number((error as { status?: unknown })?.status)
+        // 404/410 等明确的结果丢失无需重试；网络和 5xx 才使用有限退避。
+        if ((Number.isFinite(status) && status >= 400 && status < 500) || attempt === maxAttempts) throw error
+        await new Promise<void>((resolve) => setTimeout(resolve, 250 * 2 ** (attempt - 1)))
+      }
+    }
+    throw new Error('creative output download failed')
+  }
+
   async function harvestOutputsNow(run: CreativeRun, options: HarvestOptions = {}): Promise<void> {
     const outputs = Array.isArray(run.outputs) ? run.outputs : []
     const activeWorkspaceId = options.workspaceId ?? readWorkspaceId()
@@ -551,7 +603,7 @@ export function useCreativeStudio() {
         let asset = assets.get(key) ?? outputAssetMap.value.get(key)
         if (asset) assets.set(key, asset)
         if (!asset) {
-          const blob = await getCreativeRunOutputContent(run.id, output.output_index, activeWorkspaceId)
+          const blob = await fetchOutputWithRetry(run.id, output.output_index, activeWorkspaceId)
           if (!isWorkspaceCurrent(activeWorkspaceId, activeWorkspaceGeneration)) return
           asset = {
             key,
@@ -637,7 +689,30 @@ export function useCreativeStudio() {
       requestWorkspaceId = readWorkspaceId()
       requestWorkspaceGeneration = workspaceGeneration
       const page = await getCreativeRuns(requestWorkspaceId, 1, 20)
-      const items = page.items
+      // 活动接口覆盖全部 queued/running/settlement 状态，避免历史页只取最近 20 条导致任务失联。
+      // 旧版测试替身或旧后端没有该接口时仍保留历史接口行为。
+      const activeByID = new Map<string, CreativeRun>()
+      let activeFetchComplete = false
+      if (typeof getCreativeActiveRuns === 'function') {
+        let cursor: string | undefined
+        try {
+          do {
+            const activePage = await getCreativeActiveRuns(requestWorkspaceId, cursor, 100)
+            for (const run of activePage.items) activeByID.set(run.id, run)
+            cursor = activePage.has_more && activePage.next_cursor ? activePage.next_cursor : undefined
+          } while (cursor)
+          activeFetchComplete = true
+        } catch (activeError) {
+          // 活动接口短暂不可用时仍保留历史快照；下一轮轮询会继续尝试接管 active run。
+          console.error('Failed to refresh creative active runs:', activeError)
+        }
+      }
+      const items = [...page.items]
+      for (const activeRun of activeByID.values()) {
+        const index = items.findIndex((run) => run.id === activeRun.id)
+        if (index >= 0) items[index] = activeRun
+        else items.push(activeRun)
+      }
       if (generation !== historyRefreshGeneration || !isWorkspaceCurrent(requestWorkspaceId, requestWorkspaceGeneration)) return
       // 列表接口偶尔会返回旧快照，已观测到的终态不能被其它快照改写。
       const knownRuns = new Map(runHistory.value.map((run) => [run.id, run]))
@@ -673,9 +748,15 @@ export function useCreativeStudio() {
       }
       // 页面刷新后接管仍在进行中的任务；后续由同一个列表轮询统一更新。
       for (const run of mergedItems) {
-        if ((run.status === 'queued' || run.status === 'running') && !pollStates.has(run.id)) {
+        if (!CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status) && !pollStates.has(run.id)) {
           startPolling(run.id)
         }
+      }
+      // active 接口不返回终态；历史快照若确认终态，确保旧 pollState 不会永久增长。
+      for (const runID of [...pollStates.keys()]) {
+        const known = mergedItems.find((run) => run.id === runID)
+        if (known && CREATIVE_RUN_TERMINAL_STATUSES.includes(known.status)) stopPolling(runID)
+        else if (!known && activeFetchComplete) stopPolling(runID)
       }
       // 只需输出素材索引（missing 判定用）；源图 / mask 素材已由画布自行管理
       const outputs = await listAssets('output')
@@ -783,6 +864,7 @@ export function useCreativeStudio() {
   return {
     // 状态
     models,
+    capabilities,
     loadingModels,
     selectedOptionKey,
     selectedOption,

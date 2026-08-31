@@ -371,6 +371,20 @@ func (_c *CreativeRunCreate) SetNillableErrorMessage(v *string) *CreativeRunCrea
 	return _c
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (_c *CreativeRunCreate) SetReleaseTargetStatus(v string) *CreativeRunCreate {
+	_c.mutation.SetReleaseTargetStatus(v)
+	return _c
+}
+
+// SetNillableReleaseTargetStatus sets the "release_target_status" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableReleaseTargetStatus(v *string) *CreativeRunCreate {
+	if v != nil {
+		_c.SetReleaseTargetStatus(*v)
+	}
+	return _c
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (_c *CreativeRunCreate) SetAttemptCount(v int) *CreativeRunCreate {
 	_c.mutation.SetAttemptCount(v)
@@ -395,6 +409,90 @@ func (_c *CreativeRunCreate) SetAllowanceReserved(v bool) *CreativeRunCreate {
 func (_c *CreativeRunCreate) SetNillableAllowanceReserved(v *bool) *CreativeRunCreate {
 	if v != nil {
 		_c.SetAllowanceReserved(*v)
+	}
+	return _c
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (_c *CreativeRunCreate) SetProvisioningPhase(v string) *CreativeRunCreate {
+	_c.mutation.SetProvisioningPhase(v)
+	return _c
+}
+
+// SetNillableProvisioningPhase sets the "provisioning_phase" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableProvisioningPhase(v *string) *CreativeRunCreate {
+	if v != nil {
+		_c.SetProvisioningPhase(*v)
+	}
+	return _c
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (_c *CreativeRunCreate) SetProviderResultRecordedAt(v time.Time) *CreativeRunCreate {
+	_c.mutation.SetProviderResultRecordedAt(v)
+	return _c
+}
+
+// SetNillableProviderResultRecordedAt sets the "provider_result_recorded_at" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableProviderResultRecordedAt(v *time.Time) *CreativeRunCreate {
+	if v != nil {
+		_c.SetProviderResultRecordedAt(*v)
+	}
+	return _c
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (_c *CreativeRunCreate) SetSettlementAttemptCount(v int) *CreativeRunCreate {
+	_c.mutation.SetSettlementAttemptCount(v)
+	return _c
+}
+
+// SetNillableSettlementAttemptCount sets the "settlement_attempt_count" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableSettlementAttemptCount(v *int) *CreativeRunCreate {
+	if v != nil {
+		_c.SetSettlementAttemptCount(*v)
+	}
+	return _c
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (_c *CreativeRunCreate) SetReleaseAttemptCount(v int) *CreativeRunCreate {
+	_c.mutation.SetReleaseAttemptCount(v)
+	return _c
+}
+
+// SetNillableReleaseAttemptCount sets the "release_attempt_count" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableReleaseAttemptCount(v *int) *CreativeRunCreate {
+	if v != nil {
+		_c.SetReleaseAttemptCount(*v)
+	}
+	return _c
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (_c *CreativeRunCreate) SetNextReconcileAt(v time.Time) *CreativeRunCreate {
+	_c.mutation.SetNextReconcileAt(v)
+	return _c
+}
+
+// SetNillableNextReconcileAt sets the "next_reconcile_at" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableNextReconcileAt(v *time.Time) *CreativeRunCreate {
+	if v != nil {
+		_c.SetNextReconcileAt(*v)
+	}
+	return _c
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (_c *CreativeRunCreate) SetLastReconcileError(v string) *CreativeRunCreate {
+	_c.mutation.SetLastReconcileError(v)
+	return _c
+}
+
+// SetNillableLastReconcileError sets the "last_reconcile_error" field if the given value is not nil.
+func (_c *CreativeRunCreate) SetNillableLastReconcileError(v *string) *CreativeRunCreate {
+	if v != nil {
+		_c.SetLastReconcileError(*v)
 	}
 	return _c
 }
@@ -550,6 +648,10 @@ func (_c *CreativeRunCreate) defaults() {
 		v := creativerun.DefaultPlanGroupRateMultiplierEnabled
 		_c.mutation.SetPlanGroupRateMultiplierEnabled(v)
 	}
+	if _, ok := _c.mutation.ReleaseTargetStatus(); !ok {
+		v := creativerun.DefaultReleaseTargetStatus
+		_c.mutation.SetReleaseTargetStatus(v)
+	}
 	if _, ok := _c.mutation.AttemptCount(); !ok {
 		v := creativerun.DefaultAttemptCount
 		_c.mutation.SetAttemptCount(v)
@@ -557,6 +659,18 @@ func (_c *CreativeRunCreate) defaults() {
 	if _, ok := _c.mutation.AllowanceReserved(); !ok {
 		v := creativerun.DefaultAllowanceReserved
 		_c.mutation.SetAllowanceReserved(v)
+	}
+	if _, ok := _c.mutation.ProvisioningPhase(); !ok {
+		v := creativerun.DefaultProvisioningPhase
+		_c.mutation.SetProvisioningPhase(v)
+	}
+	if _, ok := _c.mutation.SettlementAttemptCount(); !ok {
+		v := creativerun.DefaultSettlementAttemptCount
+		_c.mutation.SetSettlementAttemptCount(v)
+	}
+	if _, ok := _c.mutation.ReleaseAttemptCount(); !ok {
+		v := creativerun.DefaultReleaseAttemptCount
+		_c.mutation.SetReleaseAttemptCount(v)
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		v := creativerun.DefaultVersion
@@ -700,11 +814,33 @@ func (_c *CreativeRunCreate) check() error {
 			return &ValidationError{Name: "error_code", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.error_code": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.ReleaseTargetStatus(); !ok {
+		return &ValidationError{Name: "release_target_status", err: errors.New(`ent: missing required field "CreativeRun.release_target_status"`)}
+	}
+	if v, ok := _c.mutation.ReleaseTargetStatus(); ok {
+		if err := creativerun.ReleaseTargetStatusValidator(v); err != nil {
+			return &ValidationError{Name: "release_target_status", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.release_target_status": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.AttemptCount(); !ok {
 		return &ValidationError{Name: "attempt_count", err: errors.New(`ent: missing required field "CreativeRun.attempt_count"`)}
 	}
 	if _, ok := _c.mutation.AllowanceReserved(); !ok {
 		return &ValidationError{Name: "allowance_reserved", err: errors.New(`ent: missing required field "CreativeRun.allowance_reserved"`)}
+	}
+	if _, ok := _c.mutation.ProvisioningPhase(); !ok {
+		return &ValidationError{Name: "provisioning_phase", err: errors.New(`ent: missing required field "CreativeRun.provisioning_phase"`)}
+	}
+	if v, ok := _c.mutation.ProvisioningPhase(); ok {
+		if err := creativerun.ProvisioningPhaseValidator(v); err != nil {
+			return &ValidationError{Name: "provisioning_phase", err: fmt.Errorf(`ent: validator failed for field "CreativeRun.provisioning_phase": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.SettlementAttemptCount(); !ok {
+		return &ValidationError{Name: "settlement_attempt_count", err: errors.New(`ent: missing required field "CreativeRun.settlement_attempt_count"`)}
+	}
+	if _, ok := _c.mutation.ReleaseAttemptCount(); !ok {
+		return &ValidationError{Name: "release_attempt_count", err: errors.New(`ent: missing required field "CreativeRun.release_attempt_count"`)}
 	}
 	if _, ok := _c.mutation.Version(); !ok {
 		return &ValidationError{Name: "version", err: errors.New(`ent: missing required field "CreativeRun.version"`)}
@@ -856,6 +992,10 @@ func (_c *CreativeRunCreate) createSpec() (*CreativeRun, *sqlgraph.CreateSpec) {
 		_spec.SetField(creativerun.FieldErrorMessage, field.TypeString, value)
 		_node.ErrorMessage = &value
 	}
+	if value, ok := _c.mutation.ReleaseTargetStatus(); ok {
+		_spec.SetField(creativerun.FieldReleaseTargetStatus, field.TypeString, value)
+		_node.ReleaseTargetStatus = value
+	}
 	if value, ok := _c.mutation.AttemptCount(); ok {
 		_spec.SetField(creativerun.FieldAttemptCount, field.TypeInt, value)
 		_node.AttemptCount = value
@@ -863,6 +1003,30 @@ func (_c *CreativeRunCreate) createSpec() (*CreativeRun, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowanceReserved(); ok {
 		_spec.SetField(creativerun.FieldAllowanceReserved, field.TypeBool, value)
 		_node.AllowanceReserved = value
+	}
+	if value, ok := _c.mutation.ProvisioningPhase(); ok {
+		_spec.SetField(creativerun.FieldProvisioningPhase, field.TypeString, value)
+		_node.ProvisioningPhase = value
+	}
+	if value, ok := _c.mutation.ProviderResultRecordedAt(); ok {
+		_spec.SetField(creativerun.FieldProviderResultRecordedAt, field.TypeTime, value)
+		_node.ProviderResultRecordedAt = &value
+	}
+	if value, ok := _c.mutation.SettlementAttemptCount(); ok {
+		_spec.SetField(creativerun.FieldSettlementAttemptCount, field.TypeInt, value)
+		_node.SettlementAttemptCount = value
+	}
+	if value, ok := _c.mutation.ReleaseAttemptCount(); ok {
+		_spec.SetField(creativerun.FieldReleaseAttemptCount, field.TypeInt, value)
+		_node.ReleaseAttemptCount = value
+	}
+	if value, ok := _c.mutation.NextReconcileAt(); ok {
+		_spec.SetField(creativerun.FieldNextReconcileAt, field.TypeTime, value)
+		_node.NextReconcileAt = &value
+	}
+	if value, ok := _c.mutation.LastReconcileError(); ok {
+		_spec.SetField(creativerun.FieldLastReconcileError, field.TypeString, value)
+		_node.LastReconcileError = &value
 	}
 	if value, ok := _c.mutation.Version(); ok {
 		_spec.SetField(creativerun.FieldVersion, field.TypeInt64, value)
@@ -1382,6 +1546,18 @@ func (u *CreativeRunUpsert) ClearErrorMessage() *CreativeRunUpsert {
 	return u
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (u *CreativeRunUpsert) SetReleaseTargetStatus(v string) *CreativeRunUpsert {
+	u.Set(creativerun.FieldReleaseTargetStatus, v)
+	return u
+}
+
+// UpdateReleaseTargetStatus sets the "release_target_status" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateReleaseTargetStatus() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldReleaseTargetStatus)
+	return u
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (u *CreativeRunUpsert) SetAttemptCount(v int) *CreativeRunUpsert {
 	u.Set(creativerun.FieldAttemptCount, v)
@@ -1409,6 +1585,108 @@ func (u *CreativeRunUpsert) SetAllowanceReserved(v bool) *CreativeRunUpsert {
 // UpdateAllowanceReserved sets the "allowance_reserved" field to the value that was provided on create.
 func (u *CreativeRunUpsert) UpdateAllowanceReserved() *CreativeRunUpsert {
 	u.SetExcluded(creativerun.FieldAllowanceReserved)
+	return u
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (u *CreativeRunUpsert) SetProvisioningPhase(v string) *CreativeRunUpsert {
+	u.Set(creativerun.FieldProvisioningPhase, v)
+	return u
+}
+
+// UpdateProvisioningPhase sets the "provisioning_phase" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateProvisioningPhase() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldProvisioningPhase)
+	return u
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (u *CreativeRunUpsert) SetProviderResultRecordedAt(v time.Time) *CreativeRunUpsert {
+	u.Set(creativerun.FieldProviderResultRecordedAt, v)
+	return u
+}
+
+// UpdateProviderResultRecordedAt sets the "provider_result_recorded_at" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateProviderResultRecordedAt() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldProviderResultRecordedAt)
+	return u
+}
+
+// ClearProviderResultRecordedAt clears the value of the "provider_result_recorded_at" field.
+func (u *CreativeRunUpsert) ClearProviderResultRecordedAt() *CreativeRunUpsert {
+	u.SetNull(creativerun.FieldProviderResultRecordedAt)
+	return u
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (u *CreativeRunUpsert) SetSettlementAttemptCount(v int) *CreativeRunUpsert {
+	u.Set(creativerun.FieldSettlementAttemptCount, v)
+	return u
+}
+
+// UpdateSettlementAttemptCount sets the "settlement_attempt_count" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateSettlementAttemptCount() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldSettlementAttemptCount)
+	return u
+}
+
+// AddSettlementAttemptCount adds v to the "settlement_attempt_count" field.
+func (u *CreativeRunUpsert) AddSettlementAttemptCount(v int) *CreativeRunUpsert {
+	u.Add(creativerun.FieldSettlementAttemptCount, v)
+	return u
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (u *CreativeRunUpsert) SetReleaseAttemptCount(v int) *CreativeRunUpsert {
+	u.Set(creativerun.FieldReleaseAttemptCount, v)
+	return u
+}
+
+// UpdateReleaseAttemptCount sets the "release_attempt_count" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateReleaseAttemptCount() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldReleaseAttemptCount)
+	return u
+}
+
+// AddReleaseAttemptCount adds v to the "release_attempt_count" field.
+func (u *CreativeRunUpsert) AddReleaseAttemptCount(v int) *CreativeRunUpsert {
+	u.Add(creativerun.FieldReleaseAttemptCount, v)
+	return u
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (u *CreativeRunUpsert) SetNextReconcileAt(v time.Time) *CreativeRunUpsert {
+	u.Set(creativerun.FieldNextReconcileAt, v)
+	return u
+}
+
+// UpdateNextReconcileAt sets the "next_reconcile_at" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateNextReconcileAt() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldNextReconcileAt)
+	return u
+}
+
+// ClearNextReconcileAt clears the value of the "next_reconcile_at" field.
+func (u *CreativeRunUpsert) ClearNextReconcileAt() *CreativeRunUpsert {
+	u.SetNull(creativerun.FieldNextReconcileAt)
+	return u
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (u *CreativeRunUpsert) SetLastReconcileError(v string) *CreativeRunUpsert {
+	u.Set(creativerun.FieldLastReconcileError, v)
+	return u
+}
+
+// UpdateLastReconcileError sets the "last_reconcile_error" field to the value that was provided on create.
+func (u *CreativeRunUpsert) UpdateLastReconcileError() *CreativeRunUpsert {
+	u.SetExcluded(creativerun.FieldLastReconcileError)
+	return u
+}
+
+// ClearLastReconcileError clears the value of the "last_reconcile_error" field.
+func (u *CreativeRunUpsert) ClearLastReconcileError() *CreativeRunUpsert {
+	u.SetNull(creativerun.FieldLastReconcileError)
 	return u
 }
 
@@ -2057,6 +2335,20 @@ func (u *CreativeRunUpsertOne) ClearErrorMessage() *CreativeRunUpsertOne {
 	})
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (u *CreativeRunUpsertOne) SetReleaseTargetStatus(v string) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetReleaseTargetStatus(v)
+	})
+}
+
+// UpdateReleaseTargetStatus sets the "release_target_status" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateReleaseTargetStatus() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateReleaseTargetStatus()
+	})
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (u *CreativeRunUpsertOne) SetAttemptCount(v int) *CreativeRunUpsertOne {
 	return u.Update(func(s *CreativeRunUpsert) {
@@ -2089,6 +2381,125 @@ func (u *CreativeRunUpsertOne) SetAllowanceReserved(v bool) *CreativeRunUpsertOn
 func (u *CreativeRunUpsertOne) UpdateAllowanceReserved() *CreativeRunUpsertOne {
 	return u.Update(func(s *CreativeRunUpsert) {
 		s.UpdateAllowanceReserved()
+	})
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (u *CreativeRunUpsertOne) SetProvisioningPhase(v string) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetProvisioningPhase(v)
+	})
+}
+
+// UpdateProvisioningPhase sets the "provisioning_phase" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateProvisioningPhase() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateProvisioningPhase()
+	})
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (u *CreativeRunUpsertOne) SetProviderResultRecordedAt(v time.Time) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetProviderResultRecordedAt(v)
+	})
+}
+
+// UpdateProviderResultRecordedAt sets the "provider_result_recorded_at" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateProviderResultRecordedAt() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateProviderResultRecordedAt()
+	})
+}
+
+// ClearProviderResultRecordedAt clears the value of the "provider_result_recorded_at" field.
+func (u *CreativeRunUpsertOne) ClearProviderResultRecordedAt() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearProviderResultRecordedAt()
+	})
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (u *CreativeRunUpsertOne) SetSettlementAttemptCount(v int) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetSettlementAttemptCount(v)
+	})
+}
+
+// AddSettlementAttemptCount adds v to the "settlement_attempt_count" field.
+func (u *CreativeRunUpsertOne) AddSettlementAttemptCount(v int) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.AddSettlementAttemptCount(v)
+	})
+}
+
+// UpdateSettlementAttemptCount sets the "settlement_attempt_count" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateSettlementAttemptCount() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateSettlementAttemptCount()
+	})
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (u *CreativeRunUpsertOne) SetReleaseAttemptCount(v int) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetReleaseAttemptCount(v)
+	})
+}
+
+// AddReleaseAttemptCount adds v to the "release_attempt_count" field.
+func (u *CreativeRunUpsertOne) AddReleaseAttemptCount(v int) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.AddReleaseAttemptCount(v)
+	})
+}
+
+// UpdateReleaseAttemptCount sets the "release_attempt_count" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateReleaseAttemptCount() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateReleaseAttemptCount()
+	})
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (u *CreativeRunUpsertOne) SetNextReconcileAt(v time.Time) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetNextReconcileAt(v)
+	})
+}
+
+// UpdateNextReconcileAt sets the "next_reconcile_at" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateNextReconcileAt() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateNextReconcileAt()
+	})
+}
+
+// ClearNextReconcileAt clears the value of the "next_reconcile_at" field.
+func (u *CreativeRunUpsertOne) ClearNextReconcileAt() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearNextReconcileAt()
+	})
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (u *CreativeRunUpsertOne) SetLastReconcileError(v string) *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetLastReconcileError(v)
+	})
+}
+
+// UpdateLastReconcileError sets the "last_reconcile_error" field to the value that was provided on create.
+func (u *CreativeRunUpsertOne) UpdateLastReconcileError() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateLastReconcileError()
+	})
+}
+
+// ClearLastReconcileError clears the value of the "last_reconcile_error" field.
+func (u *CreativeRunUpsertOne) ClearLastReconcileError() *CreativeRunUpsertOne {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearLastReconcileError()
 	})
 }
 
@@ -2915,6 +3326,20 @@ func (u *CreativeRunUpsertBulk) ClearErrorMessage() *CreativeRunUpsertBulk {
 	})
 }
 
+// SetReleaseTargetStatus sets the "release_target_status" field.
+func (u *CreativeRunUpsertBulk) SetReleaseTargetStatus(v string) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetReleaseTargetStatus(v)
+	})
+}
+
+// UpdateReleaseTargetStatus sets the "release_target_status" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateReleaseTargetStatus() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateReleaseTargetStatus()
+	})
+}
+
 // SetAttemptCount sets the "attempt_count" field.
 func (u *CreativeRunUpsertBulk) SetAttemptCount(v int) *CreativeRunUpsertBulk {
 	return u.Update(func(s *CreativeRunUpsert) {
@@ -2947,6 +3372,125 @@ func (u *CreativeRunUpsertBulk) SetAllowanceReserved(v bool) *CreativeRunUpsertB
 func (u *CreativeRunUpsertBulk) UpdateAllowanceReserved() *CreativeRunUpsertBulk {
 	return u.Update(func(s *CreativeRunUpsert) {
 		s.UpdateAllowanceReserved()
+	})
+}
+
+// SetProvisioningPhase sets the "provisioning_phase" field.
+func (u *CreativeRunUpsertBulk) SetProvisioningPhase(v string) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetProvisioningPhase(v)
+	})
+}
+
+// UpdateProvisioningPhase sets the "provisioning_phase" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateProvisioningPhase() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateProvisioningPhase()
+	})
+}
+
+// SetProviderResultRecordedAt sets the "provider_result_recorded_at" field.
+func (u *CreativeRunUpsertBulk) SetProviderResultRecordedAt(v time.Time) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetProviderResultRecordedAt(v)
+	})
+}
+
+// UpdateProviderResultRecordedAt sets the "provider_result_recorded_at" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateProviderResultRecordedAt() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateProviderResultRecordedAt()
+	})
+}
+
+// ClearProviderResultRecordedAt clears the value of the "provider_result_recorded_at" field.
+func (u *CreativeRunUpsertBulk) ClearProviderResultRecordedAt() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearProviderResultRecordedAt()
+	})
+}
+
+// SetSettlementAttemptCount sets the "settlement_attempt_count" field.
+func (u *CreativeRunUpsertBulk) SetSettlementAttemptCount(v int) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetSettlementAttemptCount(v)
+	})
+}
+
+// AddSettlementAttemptCount adds v to the "settlement_attempt_count" field.
+func (u *CreativeRunUpsertBulk) AddSettlementAttemptCount(v int) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.AddSettlementAttemptCount(v)
+	})
+}
+
+// UpdateSettlementAttemptCount sets the "settlement_attempt_count" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateSettlementAttemptCount() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateSettlementAttemptCount()
+	})
+}
+
+// SetReleaseAttemptCount sets the "release_attempt_count" field.
+func (u *CreativeRunUpsertBulk) SetReleaseAttemptCount(v int) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetReleaseAttemptCount(v)
+	})
+}
+
+// AddReleaseAttemptCount adds v to the "release_attempt_count" field.
+func (u *CreativeRunUpsertBulk) AddReleaseAttemptCount(v int) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.AddReleaseAttemptCount(v)
+	})
+}
+
+// UpdateReleaseAttemptCount sets the "release_attempt_count" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateReleaseAttemptCount() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateReleaseAttemptCount()
+	})
+}
+
+// SetNextReconcileAt sets the "next_reconcile_at" field.
+func (u *CreativeRunUpsertBulk) SetNextReconcileAt(v time.Time) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetNextReconcileAt(v)
+	})
+}
+
+// UpdateNextReconcileAt sets the "next_reconcile_at" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateNextReconcileAt() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateNextReconcileAt()
+	})
+}
+
+// ClearNextReconcileAt clears the value of the "next_reconcile_at" field.
+func (u *CreativeRunUpsertBulk) ClearNextReconcileAt() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearNextReconcileAt()
+	})
+}
+
+// SetLastReconcileError sets the "last_reconcile_error" field.
+func (u *CreativeRunUpsertBulk) SetLastReconcileError(v string) *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.SetLastReconcileError(v)
+	})
+}
+
+// UpdateLastReconcileError sets the "last_reconcile_error" field to the value that was provided on create.
+func (u *CreativeRunUpsertBulk) UpdateLastReconcileError() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.UpdateLastReconcileError()
+	})
+}
+
+// ClearLastReconcileError clears the value of the "last_reconcile_error" field.
+func (u *CreativeRunUpsertBulk) ClearLastReconcileError() *CreativeRunUpsertBulk {
+	return u.Update(func(s *CreativeRunUpsert) {
+		s.ClearLastReconcileError()
 	})
 }
 

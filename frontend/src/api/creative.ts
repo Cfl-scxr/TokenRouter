@@ -50,6 +50,9 @@ export const CREATIVE_RUN_TERMINAL_STATUSES: readonly string[] = [
 export type CreativeRunStatus =
   | 'queued'
   | 'running'
+  | 'provider_succeeded'
+  | 'settlement_pending'
+  | 'release_pending'
   | 'succeeded'
   | 'failed'
   | 'cancelled'
@@ -96,6 +99,20 @@ export interface CreativeRunsPage {
   total: number
 }
 
+export interface CreativeActiveRunsPage {
+  items: CreativeRun[]
+  next_cursor: string
+  has_more: boolean
+}
+
+export interface CreativeCapabilities {
+  max_prompt_chars: number
+  max_asset_bytes: number
+  max_total_input_bytes: number
+  max_mask_bytes: number
+  allowed_mime_types: string[]
+}
+
 // ==================== API 方法 ====================
 
 /**
@@ -104,6 +121,18 @@ export interface CreativeRunsPage {
 export async function getCreativeModels(): Promise<CreativeModelOption[]> {
   const { data } = await apiClient.get<CreativeModelOption[]>('/creative/models')
   return Array.isArray(data) ? data : []
+}
+
+/** 获取服务端输入限制，前端校验只使用该契约。 */
+export async function getCreativeCapabilities(): Promise<CreativeCapabilities> {
+  const { data } = await apiClient.get<CreativeCapabilities>('/creative/capabilities')
+  return {
+    max_prompt_chars: Number(data?.max_prompt_chars) || 8000,
+    max_asset_bytes: Number(data?.max_asset_bytes) || 33554432,
+    max_total_input_bytes: Number(data?.max_total_input_bytes) || 67108864,
+    max_mask_bytes: Number(data?.max_mask_bytes) || 4194304,
+    allowed_mime_types: Array.isArray(data?.allowed_mime_types) ? data.allowed_mime_types : ['image/png', 'image/jpeg', 'image/webp'],
+  }
 }
 
 /**
@@ -143,6 +172,23 @@ export async function getCreativeRuns(workspaceId: string, _page = 1, pageSize =
   return { items, total: typeof data?.total === 'number' ? data.total : items.length }
 }
 
+/** 查询所有活动任务；cursor 由服务端生成，不能由调用方解释。 */
+export async function getCreativeActiveRuns(
+  workspaceId: string,
+  cursor?: string,
+  limit = 100,
+): Promise<CreativeActiveRunsPage> {
+  const { data } = await apiClient.get<CreativeActiveRunsPage>('/creative/runs/active', {
+    params: { limit, ...(cursor ? { cursor } : {}) },
+    headers: { 'X-Creative-Workspace-ID': workspaceId },
+  })
+  return {
+    items: Array.isArray(data?.items) ? data.items : [],
+    next_cursor: typeof data?.next_cursor === 'string' ? data.next_cursor : '',
+    has_more: data?.has_more === true,
+  }
+}
+
 /**
  * 查询单个 run 详情（含 outputs 元信息）
  */
@@ -160,7 +206,7 @@ export async function getCreativeRun(id: string, workspaceId: string): Promise<C
 export async function getCreativeRunOutputContent(runId: string, index: number, workspaceId: string): Promise<Blob> {
   const { data } = await apiClient.get<Blob>(
     `/creative/runs/${encodeURIComponent(runId)}/outputs/${encodeURIComponent(String(index))}/content`,
-    { responseType: 'blob', headers: { 'X-Creative-Workspace-ID': workspaceId } },
+    { responseType: 'blob', timeout: 300000, headers: { 'X-Creative-Workspace-ID': workspaceId } },
   )
   return data
 }

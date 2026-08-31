@@ -50,7 +50,7 @@ func NewCreativeTransientStore(rdb *redis.Client, cfg *config.Config) service.Cr
 
 func (s *creativeTransientStore) SavePayload(ctx context.Context, runID string, payload *service.CreativeRunPayload) error {
 	if s.rdb == nil {
-		return errors.New("creative transient store redis client is nil")
+		return fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -62,40 +62,46 @@ func (s *creativeTransientStore) SavePayload(ctx context.Context, runID string, 
 	pipe.Del(ctx, key)
 	pipe.Set(ctx, key, body, s.defaultTTL)
 	_, err = pipe.Exec(ctx)
-	return err
+	if err != nil {
+		return fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
+	}
+	return nil
 }
 
 func (s *creativeTransientStore) LoadPayload(ctx context.Context, runID string) (*service.CreativeRunPayload, error) {
 	if s.rdb == nil {
-		return nil, errors.New("creative transient store redis client is nil")
+		return nil, fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	body, err := s.rdb.Get(ctx, s.payloadPrefix+runID).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return nil, service.ErrCreativeTransientFailed
+		return nil, fmt.Errorf("%w: %w", service.ErrCreativeTransientNotFound, service.ErrCreativeTransientFailed)
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
 	}
 	payload := &service.CreativeRunPayload{}
 	if err := json.Unmarshal(body, payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", service.ErrCreativeTransientCorrupt, err)
 	}
 	return payload, nil
 }
 
 func (s *creativeTransientStore) SaveInput(ctx context.Context, runID string, idx int, data []byte) error {
 	if s.rdb == nil {
-		return errors.New("creative transient store redis client is nil")
+		return fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	if len(data) == 0 {
 		return errors.New("creative input is empty")
 	}
-	return s.rdb.Set(ctx, s.inputKey(runID, idx), data, s.defaultTTL).Err()
+	if err := s.rdb.Set(ctx, s.inputKey(runID, idx), data, s.defaultTTL).Err(); err != nil {
+		return fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
+	}
+	return nil
 }
 
 func (s *creativeTransientStore) LoadInputs(ctx context.Context, runID string, count int) ([][]byte, error) {
 	if s.rdb == nil {
-		return nil, errors.New("creative transient store redis client is nil")
+		return nil, fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	if count <= 0 {
 		return nil, nil
@@ -106,13 +112,13 @@ func (s *creativeTransientStore) LoadInputs(ctx context.Context, runID string, c
 	}
 	values, err := s.rdb.MGet(ctx, keys...).Result()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
 	}
 	out := make([][]byte, 0, count)
 	for idx, value := range values {
 		raw, ok := value.(string)
 		if !ok || raw == "" {
-			return nil, fmt.Errorf("creative input %d for run %s is missing or expired", idx, runID)
+			return nil, fmt.Errorf("%w: %w: input %d for run %s", service.ErrCreativeTransientNotFound, service.ErrCreativeTransientFailed, idx, runID)
 		}
 		out = append(out, []byte(raw))
 	}
@@ -121,31 +127,34 @@ func (s *creativeTransientStore) LoadInputs(ctx context.Context, runID string, c
 
 func (s *creativeTransientStore) SaveMask(ctx context.Context, runID string, data []byte) error {
 	if s.rdb == nil {
-		return errors.New("creative transient store redis client is nil")
+		return fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	if len(data) == 0 {
 		return errors.New("creative mask is empty")
 	}
-	return s.rdb.Set(ctx, s.maskPrefix+runID, data, s.defaultTTL).Err()
+	if err := s.rdb.Set(ctx, s.maskPrefix+runID, data, s.defaultTTL).Err(); err != nil {
+		return fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
+	}
+	return nil
 }
 
 func (s *creativeTransientStore) LoadMask(ctx context.Context, runID string) ([]byte, error) {
 	if s.rdb == nil {
-		return nil, errors.New("creative transient store redis client is nil")
+		return nil, fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	data, err := s.rdb.Get(ctx, s.maskPrefix+runID).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return nil, service.ErrCreativeTransientFailed
+		return nil, fmt.Errorf("%w: %w", service.ErrCreativeTransientNotFound, service.ErrCreativeTransientFailed)
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
 	}
 	return data, nil
 }
 
 func (s *creativeTransientStore) SaveOutput(ctx context.Context, runID string, index int, data []byte, ttl time.Duration) error {
 	if s.rdb == nil {
-		return errors.New("creative transient store redis client is nil")
+		return fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	if len(data) == 0 {
 		return errors.New("creative output is empty")
@@ -153,38 +162,44 @@ func (s *creativeTransientStore) SaveOutput(ctx context.Context, runID string, i
 	if ttl <= 0 {
 		ttl = s.defaultTTL
 	}
-	return s.rdb.Set(ctx, s.outputKey(runID, index), data, ttl).Err()
+	if err := s.rdb.Set(ctx, s.outputKey(runID, index), data, ttl).Err(); err != nil {
+		return fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
+	}
+	return nil
 }
 
 func (s *creativeTransientStore) LoadOutput(ctx context.Context, runID string, index int) ([]byte, error) {
 	if s.rdb == nil {
-		return nil, errors.New("creative transient store redis client is nil")
+		return nil, fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	data, err := s.rdb.Get(ctx, s.outputKey(runID, index)).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return nil, service.ErrCreativeTransientFailed
+		return nil, fmt.Errorf("%w: %w", service.ErrCreativeTransientNotFound, service.ErrCreativeTransientFailed)
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
 	}
 	if len(data) == 0 {
-		return nil, service.ErrCreativeTransientFailed
+		return nil, fmt.Errorf("%w: %w", service.ErrCreativeTransientCorrupt, service.ErrCreativeTransientFailed)
 	}
 	return data, nil
 }
 
 func (s *creativeTransientStore) DeleteOutput(ctx context.Context, runID string, index int) error {
 	if s.rdb == nil {
-		return errors.New("creative transient store redis client is nil")
+		return fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	// DEL 对不存在的键天然幂等。
-	return s.rdb.Del(ctx, s.outputKey(runID, index)).Err()
+	if err := s.rdb.Del(ctx, s.outputKey(runID, index)).Err(); err != nil {
+		return fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
+	}
+	return nil
 }
 
 // DeleteRunTransient 删除任务全部临时键；inputCount/outputCount 未知时传 0 会退化为通配扫描。
 func (s *creativeTransientStore) DeleteRunTransient(ctx context.Context, runID string, inputCount, outputCount int) error {
 	if s.rdb == nil {
-		return errors.New("creative transient store redis client is nil")
+		return fmt.Errorf("%w: redis client is nil", service.ErrCreativeTransientUnavailable)
 	}
 	keys := []string{
 		s.payloadPrefix + runID,
@@ -210,7 +225,10 @@ func (s *creativeTransientStore) DeleteRunTransient(ctx context.Context, runID s
 	if len(keys) == 0 {
 		return nil
 	}
-	return s.rdb.Del(ctx, keys...).Err()
+	if err := s.rdb.Del(ctx, keys...).Err(); err != nil {
+		return fmt.Errorf("%w: %v", service.ErrCreativeTransientUnavailable, err)
+	}
+	return nil
 }
 
 func (s *creativeTransientStore) inputKey(runID string, idx int) string {

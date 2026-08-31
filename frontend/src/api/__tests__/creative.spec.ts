@@ -17,6 +17,8 @@ import {
   getCreativeRunOutputContent,
   getCreativeModels,
   getCreativeRuns,
+  getCreativeActiveRuns,
+  getCreativeCapabilities,
 } from '@/api/creative'
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111'
@@ -111,6 +113,7 @@ describe('creative API', () => {
       const config = adapter.mock.calls[0][0] as InternalAxiosRequestConfig
       expect(config.url).toBe('/creative/runs/run-9/outputs/2/content')
       expect(config.responseType).toBe('blob')
+      expect(config.timeout).toBe(300000)
       expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
     })
   })
@@ -138,6 +141,33 @@ describe('creative API', () => {
       expect(config.params.limit).toBe(20)
       expect(config.params.page).toBeUndefined()
       expect(config.params.page_size).toBeUndefined()
+      expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
+    })
+
+    it('读取服务端能力和 active runs 游标', async () => {
+      adapter.mockResolvedValueOnce(jsonResponse({
+        max_prompt_chars: 9000,
+        max_asset_bytes: 12,
+        max_total_input_bytes: 20,
+        max_mask_bytes: 8,
+        allowed_mime_types: ['image/png'],
+      }))
+      expect(await getCreativeCapabilities()).toEqual({
+        max_prompt_chars: 9000,
+        max_asset_bytes: 12,
+        max_total_input_bytes: 20,
+        max_mask_bytes: 8,
+        allowed_mime_types: ['image/png'],
+      })
+      adapter.mockResolvedValueOnce(jsonResponse({ items: [{ id: 'r1' }], next_cursor: 'abc', has_more: true }))
+      expect(await getCreativeActiveRuns(WORKSPACE_ID, 'prev', 100)).toEqual({
+        items: [{ id: 'r1' }],
+        next_cursor: 'abc',
+        has_more: true,
+      })
+      const config = adapter.mock.calls[1][0] as InternalAxiosRequestConfig
+      expect(config.url).toBe('/creative/runs/active')
+      expect(config.params).toMatchObject({ limit: 100, cursor: 'prev' })
       expect(config.headers.get('X-Creative-Workspace-ID')).toBe(WORKSPACE_ID)
     })
   })

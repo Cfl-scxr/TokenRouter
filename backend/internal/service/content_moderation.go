@@ -1665,7 +1665,7 @@ func mergeContentModerationUnitResult(target *contentModerationAuditResult, unit
 	if unit.err != nil || unit.result == nil {
 		errText := "moderation api returned no result"
 		if unit.err != nil {
-			errText = unit.err.Error()
+			errText = publicContentModerationError(unit.err)
 		}
 		target.FailedUnits = append(target.FailedUnits, ContentModerationFailedUnit{Type: unit.unitType, Index: unit.index, SourceIndex: unit.sourceIndex, Error: errText})
 		return
@@ -1680,6 +1680,22 @@ func mergeContentModerationUnitResult(target *contentModerationAuditResult, unit
 	if flagged && unit.unitType == ContentModerationItemTypeImage {
 		target.FlaggedImageIndexes = append(target.FlaggedImageIndexes, unit.index)
 	}
+}
+
+// publicContentModerationError 不把审核供应商响应体写入审计记录，避免回显输入或凭据。
+func publicContentModerationError(err error) string {
+	var apiErr *contentModerationAPIError
+	if errors.As(err, &apiErr) {
+		switch {
+		case apiErr.StatusCode == http.StatusTooManyRequests:
+			return "moderation provider rate limited"
+		case apiErr.StatusCode >= 500:
+			return "moderation provider unavailable"
+		case apiErr.StatusCode >= 400:
+			return "moderation provider rejected request"
+		}
+	}
+	return "moderation provider request failed"
 }
 
 func splitContentModerationText(text string, chunkSize int, overlap int) []string {

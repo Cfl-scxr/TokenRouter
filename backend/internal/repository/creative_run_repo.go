@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	dbent "github.com/TokenFlux/TokenRouter/ent"
@@ -55,7 +56,8 @@ func (r *creativeRunRepository) CreateCreativeRun(ctx context.Context, params se
 		SetBaseUnitPrice(params.BaseUnitPrice).
 		SetSubscriptionRateMultiplier(params.SubscriptionRateMultiplier).
 		SetBalanceRateMultiplier(params.BalanceRateMultiplier).
-		SetPlanGroupRateMultiplierEnabled(params.PlanGroupRateEnabled)
+		SetPlanGroupRateMultiplierEnabled(params.PlanGroupRateEnabled).
+		SetProvisioningPhase(service.CreativeProvisioningPhaseCreated)
 	if params.WorkspaceID != "" {
 		builder.SetWorkspaceID(params.WorkspaceID)
 	}
@@ -78,6 +80,14 @@ func (r *creativeRunRepository) CreateCreativeRun(ctx context.Context, params se
 		if err := tx.CreativeRunOutput.CreateBulk(outputBuilders...).Exec(ctx); err != nil {
 			return nil, translatePersistenceError(err, nil, service.ErrCreativeOutputExists)
 		}
+	}
+	// 创建任务与 provisioning outbox 在同一事务提交，避免数据库已有 queued 任务却没有入队意图。
+	if _, err := tx.CreativeRunOutbox.Create().
+		SetRunID(params.RunID).
+		SetOperation(string(service.CreativeRunOutboxProvision)).
+		SetStatus(string(service.CreativeRunOutboxPending)).
+		Save(ctx); err != nil {
+		return nil, translatePersistenceError(err, nil, service.ErrCreativeRunExists)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, translatePersistenceError(err, nil, service.ErrCreativeRunExists)
@@ -138,7 +148,16 @@ func (r *creativeRunRepository) ListCreativeRunsForOwner(ctx context.Context, sc
 			creativerun.WorkspaceIDEQ(scope.WorkspaceID),
 		)
 	if filter.Status != "" {
-		query = query.Where(creativerun.StatusEQ(filter.Status))
+		if filter.Status == "active" {
+			query = query.Where(creativerun.StatusIn(
+				service.CreativeRunStatusQueued,
+				service.CreativeRunStatusRunning,
+				service.CreativeRunStatusProviderSucceeded,
+				service.CreativeRunStatusSettlementPending,
+			))
+		} else {
+			query = query.Where(creativerun.StatusEQ(filter.Status))
+		}
 	}
 	entities, err := query.
 		Order(dbent.Desc(creativerun.FieldCreatedAt), dbent.Desc(creativerun.FieldID)).
@@ -188,6 +207,19 @@ func (r *creativeRunRepository) TransitionCreativeRunStatus(ctx context.Context,
 		builder.SetCancelledAt(now)
 	}
 	if toStatus == service.CreativeRunStatusFailed {
+		if opts.ErrorCode != nil {
+			builder.SetErrorCode(*opts.ErrorCode)
+		}
+		if opts.ErrorMessage != nil {
+			builder.SetErrorMessage(*opts.ErrorMessage)
+		}
+	}
+	if toStatus == service.CreativeRunStatusReleasePending {
+		target := opts.ReleaseTargetStatus
+		if target == "" {
+			target = service.CreativeRunStatusFailed
+		}
+		builder.SetReleaseTargetStatus(target)
 		if opts.ErrorCode != nil {
 			builder.SetErrorCode(*opts.ErrorCode)
 		}
@@ -283,7 +315,11 @@ func (r *creativeRunRepository) MarkCreativeRunSucceeded(ctx context.Context, ru
 	affected, err := r.client.CreativeRun.Update().
 		Where(
 			creativerun.RunIDEQ(runID),
-			creativerun.StatusEQ(service.CreativeRunStatusRunning),
+			creativerun.StatusIn(
+				service.CreativeRunStatusRunning,
+				service.CreativeRunStatusProviderSucceeded,
+				service.CreativeRunStatusSettlementPending,
+			),
 		).
 		SetStatus(service.CreativeRunStatusSucceeded).
 		SetActualCost(actualCost).
@@ -301,10 +337,37 @@ func (r *creativeRunRepository) MarkCreativeRunSucceeded(ctx context.Context, ru
 		if getErr != nil {
 			return translatePersistenceError(getErr, service.ErrCreativeRunNotFound, nil)
 		}
-		if current.Status == service.CreativeRunStatusSucceeded {
+		if current.Status == service.CreativeRunStatusSucceeded || current.Status == service.CreativeRunStatusCancelled {
 			return nil
 		}
 		return service.ErrCreativeInvalidTransition
+	}
+	return nil
+}
+
+// MarkCreativeRunProviderSucceeded 在输出已经写入 Redis 后记录 provider 成功，
+// 后续只允许 settlement worker 重试计费和落库，不重新调用 provider。
+func (r *creativeRunRepository) MarkCreativeRunProviderSucceeded(ctx context.Context, runID string, accountID int64, now time.Time) error {
+	current, err := r.client.CreativeRun.Query().Where(creativerun.RunIDEQ(runID)).Only(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrCreativeRunNotFound, nil)
+	}
+	if current.Status == service.CreativeRunStatusSucceeded || current.Status == service.CreativeRunStatusResultLost {
+		return nil
+	}
+	builder := r.client.CreativeRun.Update().
+		Where(creativerun.RunIDEQ(runID), creativerun.VersionEQ(current.Version)).
+		SetProviderResultRecordedAt(now).
+		SetUpdatedAt(now).
+		AddVersion(1)
+	if accountID > 0 {
+		builder.SetAccountID(accountID)
+	}
+	if current.Status == service.CreativeRunStatusRunning {
+		builder.SetStatus(service.CreativeRunStatusProviderSucceeded)
+	}
+	if _, err := builder.Save(ctx); err != nil {
+		return err
 	}
 	return nil
 }
@@ -383,6 +446,25 @@ func (r *creativeRunRepository) ListCreativeRunOutputs(ctx context.Context, runI
 		out = append(out, creativeRunOutputEntityToService(entity))
 	}
 	return out, nil
+}
+
+// ListCreativeRunOutputsForRuns 一次读取多个 run 的输出元数据，供历史/活动列表使用。
+func (r *creativeRunRepository) ListCreativeRunOutputsForRuns(ctx context.Context, runIDs []string) (map[string][]*service.CreativeRunOutput, error) {
+	result := make(map[string][]*service.CreativeRunOutput, len(runIDs))
+	if len(runIDs) == 0 {
+		return result, nil
+	}
+	entities, err := r.client.CreativeRunOutput.Query().
+		Where(creativerunoutput.RunIDIn(runIDs...)).
+		Order(dbent.Asc(creativerunoutput.FieldRunID), dbent.Asc(creativerunoutput.FieldOutputIndex)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, entity := range entities {
+		result[entity.RunID] = append(result[entity.RunID], creativeRunOutputEntityToService(entity))
+	}
+	return result, nil
 }
 
 // MarkCreativeRunOutputAcked 幂等标记 acked：只在 succeeded 上生效，重复 ack 无副作用。
@@ -469,6 +551,97 @@ func (r *creativeRunRepository) IncrementCreativeRunAttempt(ctx context.Context,
 	return entity.AttemptCount, nil
 }
 
+func (r *creativeRunRepository) IncrementCreativeRunSettlementAttempt(ctx context.Context, runID string) (int, error) {
+	return r.incrementCreativeRunCounter(ctx, runID, true)
+}
+
+func (r *creativeRunRepository) IncrementCreativeRunReleaseAttempt(ctx context.Context, runID string) (int, error) {
+	return r.incrementCreativeRunCounter(ctx, runID, false)
+}
+
+func (r *creativeRunRepository) incrementCreativeRunCounter(ctx context.Context, runID string, settlement bool) (int, error) {
+	update := r.client.CreativeRun.Update().Where(creativerun.RunIDEQ(runID)).SetUpdatedAt(time.Now())
+	if settlement {
+		update.AddSettlementAttemptCount(1)
+	} else {
+		update.AddReleaseAttemptCount(1)
+	}
+	if _, err := update.Save(ctx); err != nil {
+		return 0, err
+	}
+	query := r.client.CreativeRun.Query().Where(creativerun.RunIDEQ(runID))
+	if settlement {
+		entity, err := query.Select(creativerun.FieldSettlementAttemptCount).Only(ctx)
+		if err != nil {
+			return 0, translatePersistenceError(err, service.ErrCreativeRunNotFound, nil)
+		}
+		return entity.SettlementAttemptCount, nil
+	}
+	entity, err := query.Select(creativerun.FieldReleaseAttemptCount).Only(ctx)
+	if err != nil {
+		return 0, translatePersistenceError(err, service.ErrCreativeRunNotFound, nil)
+	}
+	return entity.ReleaseAttemptCount, nil
+}
+
+func (r *creativeRunRepository) SetCreativeRunProvisioningPhase(ctx context.Context, runID, phase string) error {
+	if strings.TrimSpace(phase) == "" {
+		return service.ErrCreativeInvalidParams
+	}
+	affected, err := r.client.CreativeRun.Update().
+		Where(creativerun.RunIDEQ(runID)).
+		SetProvisioningPhase(phase).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrCreativeRunNotFound
+	}
+	return nil
+}
+
+// SetCreativeRunAllowanceReserved 持久化预占事实，释放成功后复位。
+func (r *creativeRunRepository) SetCreativeRunAllowanceReserved(ctx context.Context, runID string, reserved bool) error {
+	affected, err := r.client.CreativeRun.Update().
+		Where(creativerun.RunIDEQ(runID)).
+		SetAllowanceReserved(reserved).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrCreativeRunNotFound
+	}
+	return nil
+}
+
+func (r *creativeRunRepository) SetCreativeRunReconcileError(ctx context.Context, runID, message string, next time.Time) error {
+	builder := r.client.CreativeRun.Update().
+		Where(creativerun.RunIDEQ(runID)).
+		SetUpdatedAt(time.Now())
+	if strings.TrimSpace(message) == "" {
+		builder.ClearLastReconcileError()
+	} else {
+		builder.SetLastReconcileError(message)
+	}
+	if next.IsZero() {
+		builder.ClearNextReconcileAt()
+	} else {
+		builder.SetNextReconcileAt(next)
+	}
+	affected, err := builder.Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrCreativeRunNotFound
+	}
+	return nil
+}
+
 func creativeRunEntityToService(entity *dbent.CreativeRun) *service.CreativeRun {
 	if entity == nil {
 		return nil
@@ -508,7 +681,14 @@ func creativeRunEntityToService(entity *dbent.CreativeRun) *service.CreativeRun 
 		PlanGroupRateEnabled:        entity.PlanGroupRateMultiplierEnabled,
 		ErrorCode:                   entity.ErrorCode,
 		ErrorMessage:                entity.ErrorMessage,
+		ReleaseTargetStatus:         entity.ReleaseTargetStatus,
 		AttemptCount:                entity.AttemptCount,
+		SettlementAttemptCount:      entity.SettlementAttemptCount,
+		ReleaseAttemptCount:         entity.ReleaseAttemptCount,
+		ProvisioningPhase:           entity.ProvisioningPhase,
+		ProviderResultRecordedAt:    entity.ProviderResultRecordedAt,
+		NextReconcileAt:             entity.NextReconcileAt,
+		LastReconcileError:          entity.LastReconcileError,
 		Version:                     entity.Version,
 		CreatedAt:                   entity.CreatedAt,
 		UpdatedAt:                   entity.UpdatedAt,

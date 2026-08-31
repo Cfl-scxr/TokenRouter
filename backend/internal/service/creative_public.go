@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/TokenFlux/TokenRouter/internal/config"
 	"github.com/TokenFlux/TokenRouter/internal/domain"
@@ -30,6 +31,8 @@ const (
 	defaultCreativeResponseMime   = "image/png"
 	defaultCreativeImageSize      = "1K"
 	maxCreativeErrorMessageChars  = 500
+	maxCreativeMaskBytes          = 4 << 20
+	maxCreativeGeminiInlineBytes  = 20 << 20
 )
 
 // ErrCreativeContentBlocked 是内容审核命中后的拒绝错误。
@@ -44,6 +47,7 @@ type CreativePublicService struct {
 	GroupRepo         CreativeGroupRepository
 	UserGroupRateRepo CreativeUserGroupRateRepository
 	Queue             CreativeRunQueue
+	Outbox            CreativeRunOutboxRepository
 	TransientStore    CreativeTransientStore
 	BillingRepo       UsageBillingRepository
 	UsageLogRepo      UsageLogRepository
@@ -109,8 +113,9 @@ func NewCreativePublicService(
 	authCache APIKeyAuthCacheInvalidator,
 	settings CreativeSettingReader,
 	cfg *config.Config,
+	outboxes ...CreativeRunOutboxRepository,
 ) *CreativePublicService {
-	return &CreativePublicService{
+	svc := &CreativePublicService{
 		Repo:              repo,
 		ApiKeyRepo:        apiKeyRepo,
 		UserRepo:          userRepo,
@@ -127,6 +132,17 @@ func NewCreativePublicService(
 		AuthCache:         authCache,
 		Settings:          settings,
 		Config:            cfg,
+	}
+	if len(outboxes) > 0 {
+		svc.Outbox = outboxes[0]
+	}
+	return svc
+}
+
+// SetOutboxRepository 注入可选的创作台后台补偿仓储，保持测试构造器向后兼容。
+func (s *CreativePublicService) SetOutboxRepository(outbox CreativeRunOutboxRepository) {
+	if s != nil {
+		s.Outbox = outbox
 	}
 }
 
@@ -146,6 +162,17 @@ func (s *CreativePublicService) enabled(ctx context.Context) bool {
 // ---------------------------------------------------------------------------
 // 模型列表
 // ---------------------------------------------------------------------------
+
+// GetCapabilities 返回前端与 multipart 解析共用的输入限制。
+func (s *CreativePublicService) GetCapabilities(ctx context.Context) *CreativeCapabilitiesResponse {
+	return &CreativeCapabilitiesResponse{
+		MaxPromptChars:     s.maxPromptChars(),
+		MaxAssetBytes:      s.maxAssetBytes(),
+		MaxTotalInputBytes: s.maxTotalInputBytes(),
+		MaxMaskBytes:       maxCreativeMaskBytes,
+		AllowedMIMETypes:   []string{"image/png", "image/jpeg", "image/webp"},
+	}
+}
 
 // ListModels 返回当前用户可用的分组与图片模型组合。
 func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*CreativeModelsResponse, error) {
@@ -193,11 +220,15 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 				continue
 			}
 			// 尺寸按“分组+模型”解析：渠道/分组未配置覆盖价时回退平台默认档位。
-			imageSizes := creativeImageSizesForGroupModel(group, model)
+			finalModel := models[model]
+			if finalModel == "" {
+				finalModel = model
+			}
+			imageSizes := creativeImageSizesForGroupModel(group, finalModel)
 			if len(imageSizes) == 0 {
 				continue
 			}
-			capabilities := creativeCapabilitiesForModel(group.Platform, model)
+			capabilities := creativeCapabilitiesForModel(group.Platform, finalModel)
 			out.Data = append(out.Data, CreativeModelPublic{
 				GroupID:            group.ID,
 				GroupName:          group.Name,
@@ -212,10 +243,10 @@ func (s *CreativePublicService) ListModels(ctx context.Context, userID int64) (*
 				ThinkingLevels:     capabilities.thinkingLevels,
 				MaxOutputCount:     capabilities.maxOutputCount,
 				MaxReferenceImages: capabilities.maxReferenceImages,
-				Price512:           s.creativePrice(ctx, group, model, "512"),
-				Price1K:            s.creativePrice(ctx, group, model, "1K"),
-				Price2K:            s.creativePrice(ctx, group, model, "2K"),
-				Price4K:            s.creativePrice(ctx, group, model, "4K"),
+				Price512:           s.creativePrice(ctx, group, finalModel, "512"),
+				Price1K:            s.creativePrice(ctx, group, finalModel, "1K"),
+				Price2K:            s.creativePrice(ctx, group, finalModel, "2K"),
+				Price4K:            s.creativePrice(ctx, group, finalModel, "4K"),
 			})
 		}
 	}
@@ -247,8 +278,11 @@ func (s *CreativePublicService) ListCreativeModelCandidates(ctx context.Context)
 			return nil, err
 		}
 		modelNames := make([]string, 0, len(models))
-		for model := range models {
-			if len(creativeImageSizesForGroupModel(group, model)) == 0 {
+		for model, finalModel := range models {
+			if finalModel == "" {
+				finalModel = model
+			}
+			if len(creativeImageSizesForGroupModel(group, finalModel)) == 0 {
 				continue
 			}
 			modelNames = append(modelNames, model)
@@ -579,8 +613,8 @@ func creativeOutputFormatFromMIME(mime string) string {
 }
 
 // creativeModelsForGroup 从分组可调度的账号映射中收集图片模型。
-func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, group *Group) (map[string]struct{}, error) {
-	out := make(map[string]struct{})
+func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, group *Group) (map[string]string, error) {
+	out := make(map[string]string)
 	if s.AccountRepo == nil || group == nil {
 		return out, nil
 	}
@@ -596,15 +630,18 @@ func (s *CreativePublicService) creativeModelsForGroup(ctx context.Context, grou
 		switch group.Platform {
 		case PlatformGemini:
 			for _, model := range creativeGeminiModelsForAccount(account) {
-				out[model] = struct{}{}
+				finalModel := resolveAccountMappedModelForForward(account, model)
+				if account.IsModelSupported(finalModel) && isCreativeGeminiImageModel(finalModel) {
+					out[model] = finalModel
+				}
 			}
 		case PlatformOpenAI:
 			for _, model := range creativeExpandAccountModels(account, defaultCreativeOpenAIModelCandidates(), IsGPTImageGenerationModel) {
-				out[model] = struct{}{}
+				out[model] = resolveAccountMappedModelForForward(account, model)
 			}
 		case PlatformGrok:
 			for _, model := range creativeExpandAccountModels(account, defaultCreativeGrokModelCandidates(), isGrokImageGenerationModel) {
-				out[model] = struct{}{}
+				out[model] = resolveAccountMappedModelForForward(account, model)
 			}
 		}
 	}
@@ -618,8 +655,39 @@ func creativeGeminiModelsForAccount(account *Account) []string {
 		return nil
 	}
 	if len(account.GetModelMapping()) > 0 {
-		// 复用批量图片的 Gemini 图片模型候选展开逻辑（含 Vertex）。
-		return batchImageModelsFromAccountMapping(account)
+		// 展开请求模型后再校验最终映射模型，避免文本别名映射到图片模型时被误过滤。
+		models := make(map[string]struct{})
+		mapping := account.GetModelMapping()
+		candidates := append([]string(nil), defaultBatchImageModelCandidates()...)
+		candidates = append(candidates, account.GetConfiguredRequestModels()...)
+		for requested := range mapping {
+			requested = strings.TrimSpace(requested)
+			if requested == "" {
+				continue
+			}
+			if strings.ContainsAny(requested, "*?") {
+				for _, candidate := range candidates {
+					if !matchWildcard(requested, candidate) {
+						continue
+					}
+					finalModel, _ := account.ResolveMappedModel(candidate)
+					if isCreativeGeminiImageModel(finalModel) && account.IsModelSupported(finalModel) {
+						models[candidate] = struct{}{}
+					}
+				}
+				continue
+			}
+			finalModel, _ := account.ResolveMappedModel(requested)
+			if isCreativeGeminiImageModel(finalModel) && account.IsModelSupported(finalModel) {
+				models[requested] = struct{}{}
+			}
+		}
+		out := make([]string, 0, len(models))
+		for model := range models {
+			out = append(out, model)
+		}
+		sort.Strings(out)
+		return out
 	}
 
 	models := make(map[string]struct{})
@@ -680,13 +748,18 @@ func creativeExpandAccountModels(account *Account, candidates []string, matches 
 		}
 		if strings.ContainsAny(model, "*?") {
 			for _, candidate := range candidates {
-				if matchWildcard(model, candidate) && matches(candidate) {
+				if !matchWildcard(model, candidate) {
+					continue
+				}
+				finalModel, _ := account.ResolveMappedModel(candidate)
+				if matches(finalModel) && account.IsModelSupported(finalModel) {
 					models[candidate] = struct{}{}
 				}
 			}
 			continue
 		}
-		if matches(model) {
+		finalModel, _ := account.ResolveMappedModel(model)
+		if matches(finalModel) && account.IsModelSupported(finalModel) {
 			models[model] = struct{}{}
 		}
 	}
@@ -714,6 +787,7 @@ func defaultCreativeGrokModelCandidates() []string {
 type validatedCreativeParams struct {
 	group         *Group
 	model         string
+	finalModel    string
 	operation     string
 	prompt        string
 	promptHash    string
@@ -803,26 +877,45 @@ func (s *CreativePublicService) CreateRun(ctx context.Context, scope CreativeRun
 	if err != nil {
 		return nil, err
 	}
+	if err := s.ensureCreativeOutbox(ctx, run.RunID, CreativeRunOutboxProvision); err != nil {
+		return nil, err
+	}
 	// 以下步骤按相反序回滚：释放预占 → 清理暂存 → 标记失败。
 	if err := reserveCreativeBalanceHold(ctx, s.BillingRepo, run); err != nil {
 		s.failRunAfterCreateError(ctx, run, "BILLING_HOLD_FAILED", err)
 		return nil, err
 	}
+	if marker, ok := s.Repo.(CreativeRunAllowanceMarker); ok {
+		if err := marker.SetCreativeRunAllowanceReserved(ctx, run.RunID, run.AllowanceReserved); err != nil {
+			// 预占请求本身带幂等键；保留 provisioning outbox，重启后可继续落库事实。
+			return nil, err
+		}
+	}
+	if err := s.Repo.SetCreativeRunProvisioningPhase(ctx, run.RunID, CreativeProvisioningPhaseHoldReserved); err != nil {
+		s.failRunAfterCreateError(ctx, run, "PROVISIONING_PHASE_FAILED", err)
+		return nil, err
+	}
 	s.invalidateCreativeAuthCache(ctx, userID)
 	if err := s.saveRunTransient(ctx, run, validated); err != nil {
-		_ = releaseCreativeBalanceHold(ctx, s.BillingRepo, run)
-		s.invalidateCreativeAuthCache(ctx, userID)
 		s.failRunAfterCreateError(ctx, run, "TRANSIENT_SAVE_FAILED", err)
 		return nil, ErrCreativeTransientFailed
 	}
-	if s.Queue != nil {
-		if err := s.Queue.Enqueue(ctx, run.RunID); err != nil && !errors.Is(err, ErrCreativeAlreadyQueued) {
-			_ = releaseCreativeBalanceHold(ctx, s.BillingRepo, run)
-			s.invalidateCreativeAuthCache(ctx, userID)
-			_ = s.TransientStore.DeleteRunTransient(ctx, run.RunID, len(validated.sources), validated.outputCount)
-			s.failRunAfterCreateError(ctx, run, "QUEUE_FAILED", err)
-			return nil, err
-		}
+	if err := s.Repo.SetCreativeRunProvisioningPhase(ctx, run.RunID, CreativeProvisioningPhaseTransientSaved); err != nil {
+		s.failRunAfterCreateError(ctx, run, "PROVISIONING_PHASE_FAILED", err)
+		return nil, err
+	}
+	if s.Queue == nil {
+		err := errors.New("creative queue is not configured")
+		s.failRunAfterCreateError(ctx, run, "QUEUE_FAILED", err)
+		return nil, err
+	}
+	if err := s.Queue.Enqueue(ctx, run.RunID); err != nil && !errors.Is(err, ErrCreativeAlreadyQueued) {
+		s.failRunAfterCreateError(ctx, run, "QUEUE_FAILED", err)
+		return nil, err
+	}
+	if err := s.Repo.SetCreativeRunProvisioningPhase(ctx, run.RunID, CreativeProvisioningPhaseEnqueued); err != nil {
+		s.failRunAfterCreateError(ctx, run, "PROVISIONING_PHASE_FAILED", err)
+		return nil, err
 	}
 	out, err := s.getRunPublic(ctx, run.RunID)
 	if err != nil {
@@ -833,16 +926,29 @@ func (s *CreativePublicService) CreateRun(ctx context.Context, scope CreativeRun
 
 // failRunAfterCreateError 把创建失败的任务标记为 failed；失败路径允许从 queued 直接转换。
 func (s *CreativePublicService) failRunAfterCreateError(ctx context.Context, run *CreativeRun, code string, cause error) {
+	if run == nil {
+		return
+	}
 	message := sanitizeCreativeMessage(cause.Error())
-	if err := s.Repo.TransitionCreativeRunStatus(ctx, run.RunID, CreativeRunStatusFailed, CreativeRunTransitionOptions{
-		ErrorCode:    &code,
-		ErrorMessage: &message,
+	if err := s.Repo.TransitionCreativeRunStatus(ctx, run.RunID, CreativeRunStatusReleasePending, CreativeRunTransitionOptions{
+		ErrorCode:           &code,
+		ErrorMessage:        &message,
+		ReleaseTargetStatus: CreativeRunStatusFailed,
 	}); err != nil {
 		logger.L().Warn("creative.create_failure_mark_failed",
 			zap.String("run_id", run.RunID),
 			zap.Error(err),
 		)
 	}
+	_ = s.ensureCreativeOutbox(ctx, run.RunID, CreativeRunOutboxRelease)
+}
+
+// ensureCreativeOutbox 创建或恢复一个后台补偿动作；没有配置 outbox 时保持测试替身兼容。
+func (s *CreativePublicService) ensureCreativeOutbox(ctx context.Context, runID string, operation CreativeRunOutboxOperation) error {
+	if s == nil || s.Outbox == nil {
+		return nil
+	}
+	return s.Outbox.Ensure(ctx, runID, operation, time.Now())
 }
 
 // saveRunTransient 把任务载荷与输入字节写入临时 Redis 存储。
@@ -923,6 +1029,10 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	if _, ok := models[model]; !ok {
 		return nil, ErrCreativeInvalidModel
 	}
+	finalModel := models[model]
+	if finalModel == "" {
+		finalModel = model
+	}
 	operation := strings.TrimSpace(params.Operation)
 	operationAllowed := false
 	for _, candidate := range operations {
@@ -934,7 +1044,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	if !operationAllowed {
 		return nil, ErrCreativeOperationUnsupported
 	}
-	capabilities := creativeCapabilitiesForModel(group.Platform, model)
+	capabilities := creativeCapabilitiesForModel(group.Platform, finalModel)
 	if operation != CreativeOperationGenerate && capabilities.maxReferenceImages > 0 && len(params.SourceImages) > capabilities.maxReferenceImages {
 		return nil, ErrCreativeInvalidParams
 	}
@@ -943,7 +1053,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	if prompt == "" {
 		return nil, ErrCreativeInvalidParams
 	}
-	if len(prompt) > s.maxPromptChars() {
+	if utf8.RuneCountInString(prompt) > s.maxPromptChars() {
 		return nil, ErrCreativePromptTooLong
 	}
 
@@ -959,7 +1069,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	if imageSize == "" {
 		imageSize = s.defaultImageSize()
 	}
-	imageSize, supported := creativeCanonicalOption(imageSize, creativeImageSizesForGroupModel(group, model))
+	imageSize, supported := creativeCanonicalOption(imageSize, creativeImageSizesForGroupModel(group, finalModel))
 	if !supported {
 		return nil, ErrCreativeInvalidParams
 	}
@@ -1015,6 +1125,9 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	}
 	var mask *CreativeInputImage
 	if params.Mask != nil && len(params.Mask.Bytes) > 0 {
+		if len(params.Mask.Bytes) > maxCreativeMaskBytes {
+			return nil, ErrCreativeAssetTooLarge
+		}
 		normalized, err := normalizeCreativeImageInput(*params.Mask, s.maxAssetBytes())
 		if err != nil {
 			return nil, err
@@ -1027,6 +1140,19 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	}
 	if totalBytes > 0 && int64(totalBytes) > s.maxTotalInputBytes() {
 		return nil, ErrCreativeInputTooLarge
+	}
+	if strings.EqualFold(strings.TrimSpace(group.Platform), string(PlatformGemini)) {
+		encodedBytes := base64.StdEncoding.EncodedLen(len([]byte(prompt)))
+		for _, source := range sources {
+			encodedBytes += base64.StdEncoding.EncodedLen(len(source.Bytes))
+		}
+		if mask != nil {
+			encodedBytes += base64.StdEncoding.EncodedLen(len(mask.Bytes))
+		}
+		// Gemini inlineData 的上游限制按整个 JSON 请求估算，额外预留字段开销。
+		if int64(encodedBytes)+int64(len(prompt))+4096 > maxCreativeGeminiInlineBytes {
+			return nil, ErrCreativeInputTooLarge
+		}
 	}
 
 	switch operation {
@@ -1072,6 +1198,7 @@ func (s *CreativePublicService) validateCreateParams(ctx context.Context, userID
 	return &validatedCreativeParams{
 		group:         group,
 		model:         model,
+		finalModel:    finalModel,
 		operation:     operation,
 		prompt:        prompt,
 		promptHash:    promptHash,
@@ -1095,7 +1222,8 @@ func normalizeCreativeImageInput(input CreativeInputImage, maxBytes int64) (Crea
 	if int64(len(input.Bytes)) > maxBytes {
 		return input, ErrCreativeAssetTooLarge
 	}
-	mime := strings.ToLower(strings.TrimSpace(input.Mime))
+	declaredMIME := strings.ToLower(strings.TrimSpace(input.Mime))
+	mime := declaredMIME
 	switch mime {
 	case "image/png", "image/jpeg", "image/jpg", "image/webp":
 	default:
@@ -1107,6 +1235,11 @@ func normalizeCreativeImageInput(input CreativeInputImage, maxBytes int64) (Crea
 	}
 	if mime == "image/jpg" {
 		mime = "image/jpeg"
+	}
+	// 始终复核文件魔数，避免仅凭 multipart MIME 头把不支持文件送到 provider。
+	detectedMIME := sniffCreativeImageMime(input.Bytes)
+	if detectedMIME == "" || detectedMIME != mime {
+		return input, ErrCreativeInvalidMime
 	}
 	return CreativeInputImage{Bytes: input.Bytes, Mime: mime}, nil
 }
@@ -1291,14 +1424,18 @@ func (s *CreativePublicService) resolveCreativePricing(ctx context.Context, user
 	}
 	baseUnitPrice := 0.0
 	estimatedCost := 0.0
-	if resolvedUnitPrice, ok := s.creativeResolvedImageUnitPrice(ctx, group, validated.model, validated.imageSize); ok {
+	pricingModel := validated.finalModel
+	if pricingModel == "" {
+		pricingModel = validated.model
+	}
+	if resolvedUnitPrice, ok := s.creativeResolvedImageUnitPrice(ctx, group, pricingModel, validated.imageSize); ok {
 		baseUnitPrice = resolvedUnitPrice
 		estimatedCost = resolvedUnitPrice * float64(validated.outputCount) * effective
 	} else if unit := group.GetImagePrice(validated.imageSize); unit != nil && *unit >= 0 {
 		baseUnitPrice = *unit
 		estimatedCost = baseUnitPrice * float64(validated.outputCount) * effective
 	} else if s.Pricing != nil {
-		breakdown := s.Pricing.CalculateImageCost(validated.model, validated.imageSize, validated.outputCount, imagePriceConfig, effective)
+		breakdown := s.Pricing.CalculateImageCost(pricingModel, validated.imageSize, validated.outputCount, imagePriceConfig, effective)
 		estimatedCost = breakdown.ActualCost
 		if validated.outputCount > 0 {
 			baseUnitPrice = breakdown.TotalCost / float64(validated.outputCount)
@@ -1415,11 +1552,29 @@ func (s *CreativePublicService) ListRuns(ctx context.Context, scope CreativeRunS
 		return nil, err
 	}
 	data := make([]*CreativeRunPublic, 0, len(runs))
-	for _, run := range runs {
-		// 历史列表同样需要输出元数据，否则前端无法关联本地素材与缺失占位。
-		outputs, err := s.Repo.ListCreativeRunOutputs(ctx, run.RunID)
+	outputByRun := make(map[string][]*CreativeRunOutput, len(runs))
+	batchOutputs := false
+	if batchReader, ok := s.Repo.(CreativeRunOutputBatchReader); ok {
+		batchOutputs = true
+		runIDs := make([]string, 0, len(runs))
+		for _, run := range runs {
+			if run != nil {
+				runIDs = append(runIDs, run.RunID)
+			}
+		}
+		outputByRun, err = batchReader.ListCreativeRunOutputsForRuns(ctx, runIDs)
 		if err != nil {
 			return nil, err
+		}
+	}
+	for _, run := range runs {
+		// 历史列表同样需要输出元数据，否则前端无法关联本地素材与缺失占位。
+		outputs := outputByRun[run.RunID]
+		if !batchOutputs {
+			outputs, err = s.Repo.ListCreativeRunOutputs(ctx, run.RunID)
+			if err != nil {
+				return nil, err
+			}
 		}
 		data = append(data, CreativeRunToPublic(run, outputs))
 	}
@@ -1447,6 +1602,9 @@ func (s *CreativePublicService) GetOutputContent(ctx context.Context, scope Crea
 	if err != nil {
 		return nil, err
 	}
+	if !IsTerminalCreativeRunStatus(run.Status) {
+		return nil, ErrCreativeOutputNotReady
+	}
 	output, err := s.Repo.GetCreativeRunOutput(ctx, runID, outputIndex)
 	if err != nil {
 		return nil, err
@@ -1464,7 +1622,9 @@ func (s *CreativePublicService) GetOutputContent(ctx context.Context, scope Crea
 	}
 	now := time.Now()
 	if output.TransientExpiresAt != nil && now.After(*output.TransientExpiresAt) {
-		s.markRunResultLostBestEffort(ctx, run)
+		if err := s.markRunResultLost(ctx, run); err != nil {
+			return nil, err
+		}
 		return nil, ErrCreativeOutputExpired
 	}
 	if s.TransientStore == nil {
@@ -1472,8 +1632,13 @@ func (s *CreativePublicService) GetOutputContent(ctx context.Context, scope Crea
 	}
 	data, err := s.TransientStore.LoadOutput(ctx, runID, outputIndex)
 	if err != nil {
+		if errors.Is(err, ErrCreativeTransientUnavailable) {
+			return nil, ErrCreativeTransientFailed
+		}
 		// 临时输出已被 TTL 清理或丢失：成功任务转为 result_lost。
-		s.markRunResultLostBestEffort(ctx, run)
+		if markErr := s.markRunResultLost(ctx, run); markErr != nil {
+			return nil, markErr
+		}
 		return nil, ErrCreativeResultLost
 	}
 	contentType := "application/octet-stream"
@@ -1483,20 +1648,18 @@ func (s *CreativePublicService) GetOutputContent(ctx context.Context, scope Crea
 	return &CreativeOutputContent{Content: data, ContentType: contentType}, nil
 }
 
-// markRunResultLostBestEffort 把 succeeded 任务降级为 result_lost；失败只记日志。
-func (s *CreativePublicService) markRunResultLostBestEffort(ctx context.Context, run *CreativeRun) {
+// markRunResultLost 把 succeeded 任务降级为 result_lost；数据库失败必须返回以便重试。
+func (s *CreativePublicService) markRunResultLost(ctx context.Context, run *CreativeRun) error {
 	if run == nil || run.Status != CreativeRunStatusSucceeded {
-		return
+		return nil
 	}
 	if err := s.Repo.TransitionCreativeRunStatus(ctx, run.RunID, CreativeRunStatusResultLost, CreativeRunTransitionOptions{
 		ErrorCode:    creativeStringPtr("RESULT_EXPIRED"),
 		ErrorMessage: creativeStringPtr("transient output expired before client acknowledgment"),
 	}); err != nil {
-		logger.L().Warn("creative.mark_result_lost_failed",
-			zap.String("run_id", run.RunID),
-			zap.Error(err),
-		)
+		return err
 	}
+	return nil
 }
 
 // AckOutput 在客户端确认保存后删除临时输出并标记 acked，幂等。
@@ -1513,7 +1676,9 @@ func (s *CreativePublicService) AckOutput(ctx context.Context, scope CreativeRun
 	if err != nil {
 		return err
 	}
-	_ = run
+	if !IsTerminalCreativeRunStatus(run.Status) {
+		return ErrCreativeOutputNotReady
+	}
 	output, err := s.Repo.GetCreativeRunOutput(ctx, runID, outputIndex)
 	if err != nil {
 		return err
@@ -1528,6 +1693,9 @@ func (s *CreativePublicService) AckOutput(ctx context.Context, scope CreativeRun
 	if output.Status != CreativeRunOutputStatusSucceeded {
 		return ErrCreativeOutputNotReady
 	}
+	if err := s.Repo.MarkCreativeRunOutputAcked(ctx, runID, outputIndex, time.Now()); err != nil {
+		return err
+	}
 	if s.TransientStore != nil {
 		if err := s.TransientStore.DeleteOutput(ctx, runID, outputIndex); err != nil {
 			logger.L().Warn("creative.ack_delete_output_failed",
@@ -1535,9 +1703,10 @@ func (s *CreativePublicService) AckOutput(ctx context.Context, scope CreativeRun
 				zap.Int("output_index", outputIndex),
 				zap.Error(err),
 			)
+			// 数据库已经记录 ack，删除失败由 transient cleanup 负责补偿。
 		}
 	}
-	return s.Repo.MarkCreativeRunOutputAcked(ctx, runID, outputIndex, time.Now())
+	return nil
 }
 
 func (s *CreativePublicService) invalidateCreativeAuthCache(ctx context.Context, userID int64) {
@@ -1581,10 +1750,8 @@ type CreativeOutputResult struct {
 	ErrorMessage string
 }
 
-// SucceedRun 结算成功路径：保存临时输出 → 捕获实际费用 → 写 usage_logs → 终态 succeeded。
-// 幂等：重复调用或任务已终态时直接返回，不重复扣费。
-// 任务在执行期间进入 cancelled 时：仍按 provider 实际成功结果捕获并记录用量，
-// 但保留 cancelled 终态，不覆盖为 succeeded。
+// SucceedRun 记录 provider 成功结果：保存临时输出并进入 provider_succeeded，
+// 后续结算由 SettleRun 完成，避免数据库/计费失败时重复调用 provider。
 func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, accountID int64, results []CreativeOutputResult) (*CreativeRunPublic, error) {
 	if s == nil || s.Repo == nil {
 		return nil, errors.New("creative service is not configured")
@@ -1593,9 +1760,7 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 	if err != nil {
 		return nil, err
 	}
-	keepCancelled := run.Status == CreativeRunStatusCancelled
-	if IsTerminalCreativeRunStatus(run.Status) && !keepCancelled {
-		// 已结算/已失败/已丢失：返回当前快照，不重复计费。
+	if IsTerminalCreativeRunStatus(run.Status) && run.Status != CreativeRunStatusCancelled {
 		return s.getRunPublic(ctx, runID)
 	}
 	if accountID > 0 {
@@ -1609,7 +1774,6 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 	transientTTL := s.transientTTL()
 	now := time.Now()
 	expiresAt := now.Add(transientTTL)
-	successCount := 0
 	for i := range results {
 		result := &results[i]
 		if result.Success {
@@ -1629,7 +1793,6 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 				)
 				return nil, fmt.Errorf("%w: save output %d: %v", ErrCreativeTransientFailed, result.Index, err)
 			}
-			successCount++
 		}
 	}
 	// 所有成功输出都已写入 transient 后再更新数据库状态，避免输出部分成功。
@@ -1645,36 +1808,120 @@ func (s *CreativePublicService) SucceedRun(ctx context.Context, runID string, ac
 			return nil, err
 		}
 	}
+	if err := s.Repo.MarkCreativeRunProviderSucceeded(ctx, runID, accountID, now); err != nil {
+		return nil, err
+	}
+	if err := s.ensureCreativeOutbox(ctx, runID, CreativeRunOutboxSettle); err != nil {
+		return nil, err
+	}
+	// 未接入 outbox 的测试替身保持同步结算；生产环境由 worker/outbox 负责恢复。
+	if s.Outbox == nil {
+		if err := s.SettleRun(ctx, runID); err != nil {
+			return nil, err
+		}
+	}
+	return s.getRunPublic(ctx, runID)
+}
+
+// SettleRun 捕获 provider 已成功的结果并写 usage log；失败时保持 settlement_pending。
+func (s *CreativePublicService) SettleRun(ctx context.Context, runID string) error {
+	if s == nil || s.Repo == nil {
+		return errors.New("creative service is not configured")
+	}
+	run, err := s.Repo.GetCreativeRunByRunID(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run == nil || (!IsCreativeRunSettlementPending(run.Status) && !(run.Status == CreativeRunStatusCancelled && run.ProviderResultRecordedAt != nil)) {
+		return nil
+	}
+	if run.Status == CreativeRunStatusReleasePending {
+		return nil
+	}
+	if run.Status == CreativeRunStatusCancelled && run.ActualCost != nil {
+		return nil
+	}
+	if run.Status == CreativeRunStatusProviderSucceeded {
+		if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusSettlementPending, CreativeRunTransitionOptions{}); err != nil && !errors.Is(err, ErrCreativeInvalidTransition) {
+			return err
+		}
+		run.Status = CreativeRunStatusSettlementPending
+	}
 	if run.AccountID == nil || *run.AccountID <= 0 {
-		// 执行账号是 usage_logs 的必填上下文；缺失时保持未结算而不是写脏数据。
-		return nil, ErrBatchImageSettlementMissingAccountID
+		return ErrBatchImageSettlementMissingAccountID
+	}
+	outputs, err := s.Repo.ListCreativeRunOutputs(ctx, runID)
+	if err != nil {
+		return err
+	}
+	successCount := 0
+	for _, output := range outputs {
+		if output != nil && output.Status == CreativeRunOutputStatusSucceeded {
+			successCount++
+		}
 	}
 	billingResult, err := captureCreativeBalanceHold(ctx, s.BillingRepo, run, successCount)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	if marker, ok := s.Repo.(CreativeRunAllowanceMarker); ok && run.AllowanceReserved {
+		if err := marker.SetCreativeRunAllowanceReserved(ctx, runID, false); err != nil {
+			return err
+		}
+		run.AllowanceReserved = false
 	}
 	s.invalidateCreativeAuthCache(ctx, run.UserID)
 	actualCost := 0.0
 	if run.ActualCost != nil {
 		actualCost = *run.ActualCost
 	}
-	if keepCancelled {
-		// 任务在执行期间进入 cancelled：资金已按实际成功结果捕获、用量已记录，
-		// 但任务终态保持 cancelled，绝不回写为 succeeded。
-		return s.getRunPublic(ctx, runID)
-	}
-	if err := s.Repo.MarkCreativeRunSucceeded(ctx, runID, actualCost, now); err != nil {
-		if errors.Is(err, ErrCreativeInvalidTransition) {
-			// 并发取消/失败已把任务推进到终态：资金已捕获，保持计费，不释放。
-			return s.getRunPublic(ctx, runID)
+	if err := s.Repo.MarkCreativeRunSucceeded(ctx, runID, actualCost, time.Now()); err != nil {
+		if !errors.Is(err, ErrCreativeInvalidTransition) {
+			return err
 		}
-		return nil, err
 	}
-	s.recordCreativeUsageLog(ctx, run, actualCost, successCount, billingResult, now)
-	return s.getRunPublic(ctx, runID)
+	// cancelled 竞态仍需写 usage log，但保持 cancelled 终态。
+	s.recordCreativeUsageLog(ctx, run, actualCost, successCount, billingResult, time.Now())
+	return nil
 }
 
-// FailRun 失败路径：记录错误 + 释放预占 + 清理暂存；终态任务幂等返回。
+// ReleaseRun 释放未消耗 hold，成功后把 release_pending 推进到目标终态。
+func (s *CreativePublicService) ReleaseRun(ctx context.Context, runID string) error {
+	if s == nil || s.Repo == nil {
+		return errors.New("creative service is not configured")
+	}
+	run, err := s.Repo.GetCreativeRunByRunID(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if run == nil || run.Status != CreativeRunStatusReleasePending {
+		return nil
+	}
+	if err := releaseCreativeBalanceHold(ctx, s.BillingRepo, run); err != nil {
+		return err
+	}
+	if marker, ok := s.Repo.(CreativeRunAllowanceMarker); ok && run.AllowanceReserved {
+		if err := marker.SetCreativeRunAllowanceReserved(ctx, runID, false); err != nil {
+			return err
+		}
+	}
+	target := run.ReleaseTargetStatus
+	if target == "" {
+		target = CreativeRunStatusFailed
+	}
+	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, target, CreativeRunTransitionOptions{}); err != nil && !errors.Is(err, ErrCreativeInvalidTransition) {
+		return err
+	}
+	s.invalidateCreativeAuthCache(ctx, run.UserID)
+	if s.TransientStore != nil {
+		if err := s.TransientStore.DeleteRunTransient(ctx, runID, 0, run.RequestedOutputCount); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// FailRun 失败路径：先进入 release_pending，再由 ReleaseRun 完成释放和目标终态。
 func (s *CreativePublicService) FailRun(ctx context.Context, runID, errorCode, errorMessage string) error {
 	if s == nil || s.Repo == nil {
 		return nil
@@ -1686,32 +1933,30 @@ func (s *CreativePublicService) FailRun(ctx context.Context, runID, errorCode, e
 	if IsTerminalCreativeRunStatus(run.Status) {
 		return nil
 	}
+	if run.Status == CreativeRunStatusReleasePending {
+		return s.ReleaseRun(ctx, runID)
+	}
 	code := strings.TrimSpace(errorCode)
 	if code == "" {
 		code = "PROVIDER_FAILED"
 	}
 	message := sanitizeCreativeMessage(errorMessage)
-	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusFailed, CreativeRunTransitionOptions{
-		ErrorCode:    &code,
-		ErrorMessage: &message,
+	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusReleasePending, CreativeRunTransitionOptions{
+		ErrorCode:           &code,
+		ErrorMessage:        &message,
+		ReleaseTargetStatus: CreativeRunStatusFailed,
 	}); err != nil && !errors.Is(err, ErrCreativeInvalidTransition) {
 		return err
 	}
-	if err := releaseCreativeBalanceHold(ctx, s.BillingRepo, run); err != nil {
+	if err := s.ensureCreativeOutbox(ctx, runID, CreativeRunOutboxRelease); err != nil {
+		return err
+	}
+	if err := s.ReleaseRun(ctx, runID); err != nil {
 		logger.L().Warn("creative.fail_release_failed",
 			zap.String("run_id", runID),
 			zap.Error(err),
 		)
 		return err
-	}
-	s.invalidateCreativeAuthCache(ctx, run.UserID)
-	if s.TransientStore != nil {
-		if err := s.TransientStore.DeleteRunTransient(ctx, runID, 0, run.RequestedOutputCount); err != nil {
-			logger.L().Warn("creative.fail_transient_cleanup_failed",
-				zap.String("run_id", runID),
-				zap.Error(err),
-			)
-		}
 	}
 	return nil
 }
@@ -1728,15 +1973,19 @@ func (s *CreativePublicService) CancelRunByWorker(ctx context.Context, runID str
 	if IsTerminalCreativeRunStatus(run.Status) {
 		return nil
 	}
-	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusCancelled, CreativeRunTransitionOptions{}); err != nil && !errors.Is(err, ErrCreativeInvalidTransition) {
+	if run.Status == CreativeRunStatusReleasePending {
+		return s.ReleaseRun(ctx, runID)
+	}
+	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusReleasePending, CreativeRunTransitionOptions{
+		ReleaseTargetStatus: CreativeRunStatusCancelled,
+	}); err != nil && !errors.Is(err, ErrCreativeInvalidTransition) {
 		return err
 	}
-	if err := releaseCreativeBalanceHold(ctx, s.BillingRepo, run); err != nil {
+	if err := s.ensureCreativeOutbox(ctx, runID, CreativeRunOutboxRelease); err != nil {
 		return err
 	}
-	s.invalidateCreativeAuthCache(ctx, run.UserID)
-	if s.TransientStore != nil {
-		_ = s.TransientStore.DeleteRunTransient(ctx, runID, 0, run.RequestedOutputCount)
+	if err := s.ReleaseRun(ctx, runID); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1757,21 +2006,22 @@ func (s *CreativePublicService) MarkResultLost(ctx context.Context, runID string
 	if IsTerminalCreativeRunStatus(run.Status) {
 		return nil
 	}
+	if providerSucceeded {
+		return nil
+	}
 	code := "RESULT_LOST"
 	message := "transient result expired or worker lost before client acknowledgment"
-	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusResultLost, CreativeRunTransitionOptions{
-		ErrorCode:    &code,
-		ErrorMessage: &message,
+	if err := s.Repo.TransitionCreativeRunStatus(ctx, runID, CreativeRunStatusReleasePending, CreativeRunTransitionOptions{
+		ErrorCode:           &code,
+		ErrorMessage:        &message,
+		ReleaseTargetStatus: CreativeRunStatusResultLost,
 	}); err != nil {
 		return err
 	}
-	if !providerSucceeded {
-		if err := releaseCreativeBalanceHold(ctx, s.BillingRepo, run); err != nil {
-			return err
-		}
-		s.invalidateCreativeAuthCache(ctx, run.UserID)
+	if err := s.ensureCreativeOutbox(ctx, runID, CreativeRunOutboxRelease); err != nil {
+		return err
 	}
-	return nil
+	return s.ReleaseRun(ctx, runID)
 }
 
 // recordCreativeUsageLog 按成功输出数写图片用量日志（request_id = creative_settle:{runID}）。
@@ -1849,6 +2099,11 @@ func (s *CreativePublicService) maxAssetBytes() int64 {
 	return 33554432
 }
 
+// MaxAssetBytes 返回 handler 与模型目录共用的单文件上限。
+func (s *CreativePublicService) MaxAssetBytes() int64 {
+	return s.maxAssetBytes()
+}
+
 func (s *CreativePublicService) maxTotalInputBytes() int64 {
 	if s != nil && s.Config != nil && s.Config.Creative.MaxTotalInputBytes > 0 {
 		return s.Config.Creative.MaxTotalInputBytes
@@ -1880,8 +2135,18 @@ func (s *CreativePublicService) transientTTL() time.Duration {
 // sanitizeCreativeMessage 截断错误消息，避免把上游细节原样抛给客户端。
 func sanitizeCreativeMessage(message string) string {
 	message = strings.TrimSpace(message)
-	if len(message) > maxCreativeErrorMessageChars {
-		message = message[:maxCreativeErrorMessageChars]
+	message = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == '\t' || (r >= 0x20 && r != 0x7f) {
+			return r
+		}
+		return ' '
+	}, message)
+	if !utf8.ValidString(message) {
+		message = strings.ToValidUTF8(message, "?")
+	}
+	runes := []rune(message)
+	if len(runes) > maxCreativeErrorMessageChars {
+		message = string(runes[:maxCreativeErrorMessageChars])
 	}
 	return message
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -20,14 +21,27 @@ const (
 	CreativeOperationInpaint  = "inpaint"
 )
 
+// 创作台创建 saga 阶段，按顺序持久化推进，便于进程崩溃后继续执行。
+const (
+	CreativeProvisioningPhaseCreated        = "created"
+	CreativeProvisioningPhaseHoldReserved   = "hold_reserved"
+	CreativeProvisioningPhaseTransientSaved = "transient_saved"
+	CreativeProvisioningPhaseEnqueued       = "enqueued"
+	CreativeProvisioningPhaseFailed         = "failed"
+	CreativeProvisioningPhaseComplete       = "complete"
+)
+
 // 创作台任务状态。
 const (
-	CreativeRunStatusQueued     = "queued"
-	CreativeRunStatusRunning    = "running"
-	CreativeRunStatusSucceeded  = "succeeded"
-	CreativeRunStatusFailed     = "failed"
-	CreativeRunStatusCancelled  = "cancelled"
-	CreativeRunStatusResultLost = "result_lost"
+	CreativeRunStatusQueued            = "queued"
+	CreativeRunStatusRunning           = "running"
+	CreativeRunStatusProviderSucceeded = "provider_succeeded"
+	CreativeRunStatusSettlementPending = "settlement_pending"
+	CreativeRunStatusReleasePending    = "release_pending"
+	CreativeRunStatusSucceeded         = "succeeded"
+	CreativeRunStatusFailed            = "failed"
+	CreativeRunStatusCancelled         = "cancelled"
+	CreativeRunStatusResultLost        = "result_lost"
 )
 
 // 创作台输出状态。
@@ -43,19 +57,23 @@ const (
 const CreativeManagedBy = "creative_studio"
 
 var (
-	ErrCreativeDisabled          = infraerrors.New(http.StatusNotFound, "CREATIVE_DISABLED", "creative studio is disabled")
-	ErrCreativeRunNotFound       = infraerrors.New(http.StatusNotFound, "CREATIVE_RUN_NOT_FOUND", "creative run not found")
-	ErrCreativeRunExists         = infraerrors.New(http.StatusConflict, "CREATIVE_RUN_EXISTS", "creative run already exists")
-	ErrCreativeOutputExists      = infraerrors.New(http.StatusConflict, "CREATIVE_OUTPUT_EXISTS", "creative run output already exists")
-	ErrCreativeWorkspaceRequired = infraerrors.New(http.StatusBadRequest, "CREATIVE_WORKSPACE_REQUIRED", "creative workspace id is required")
-	ErrCreativeWorkspaceInvalid  = infraerrors.New(http.StatusBadRequest, "CREATIVE_WORKSPACE_INVALID", "creative workspace id is invalid")
+	// transient store 的三类错误必须由 worker 分别处理，不能把基础设施故障当作结果丢失。
+	ErrCreativeTransientNotFound    = errors.New("creative transient data is missing or expired")
+	ErrCreativeTransientUnavailable = errors.New("creative transient store is unavailable")
+	ErrCreativeTransientCorrupt     = errors.New("creative transient data is corrupt")
+	ErrCreativeDisabled             = infraerrors.New(http.StatusNotFound, "CREATIVE_DISABLED", "creative studio is disabled")
+	ErrCreativeRunNotFound          = infraerrors.New(http.StatusNotFound, "CREATIVE_RUN_NOT_FOUND", "creative run not found")
+	ErrCreativeRunExists            = infraerrors.New(http.StatusConflict, "CREATIVE_RUN_EXISTS", "creative run already exists")
+	ErrCreativeOutputExists         = infraerrors.New(http.StatusConflict, "CREATIVE_OUTPUT_EXISTS", "creative run output already exists")
+	ErrCreativeWorkspaceRequired    = infraerrors.New(http.StatusBadRequest, "CREATIVE_WORKSPACE_REQUIRED", "creative workspace id is required")
+	ErrCreativeWorkspaceInvalid     = infraerrors.New(http.StatusBadRequest, "CREATIVE_WORKSPACE_INVALID", "creative workspace id is invalid")
 
 	ErrCreativeInvalidTransition    = infraerrors.New(http.StatusBadRequest, "CREATIVE_INVALID_TRANSITION", "invalid creative run status transition")
 	ErrCreativeInvalidParams        = infraerrors.New(http.StatusBadRequest, "CREATIVE_INVALID_PARAMS", "invalid creative run parameters")
 	ErrCreativePromptTooLong        = infraerrors.New(http.StatusBadRequest, "CREATIVE_PROMPT_TOO_LONG", "creative prompt is too long")
 	ErrCreativeInvalidMime          = infraerrors.New(http.StatusBadRequest, "CREATIVE_INVALID_MIME", "creative source image mime type is invalid")
-	ErrCreativeAssetTooLarge        = infraerrors.New(http.StatusBadRequest, "CREATIVE_ASSET_TOO_LARGE", "creative asset is too large")
-	ErrCreativeInputTooLarge        = infraerrors.New(http.StatusBadRequest, "CREATIVE_INPUT_TOO_LARGE", "creative total input is too large")
+	ErrCreativeAssetTooLarge        = infraerrors.New(http.StatusRequestEntityTooLarge, "CREATIVE_ASSET_TOO_LARGE", "creative asset is too large")
+	ErrCreativeInputTooLarge        = infraerrors.New(http.StatusRequestEntityTooLarge, "CREATIVE_INPUT_TOO_LARGE", "creative total input is too large")
 	ErrCreativeMaskRequired         = infraerrors.New(http.StatusBadRequest, "CREATIVE_MASK_REQUIRED", "creative inpaint requires source image and png mask")
 	ErrCreativeMaskSizeMismatch     = infraerrors.New(http.StatusBadRequest, "CREATIVE_MASK_SIZE_MISMATCH", "creative mask dimensions must match the first source image")
 	ErrCreativeOperationUnsupported = infraerrors.New(http.StatusBadRequest, "CREATIVE_OPERATION_UNSUPPORTED", "creative operation is not supported by this group")
@@ -153,9 +171,17 @@ type CreativeRun struct {
 	BalanceRateMultiplier      float64
 	PlanGroupRateEnabled       bool
 
-	ErrorCode    *string
-	ErrorMessage *string
-	AttemptCount int
+	ErrorCode           *string
+	ErrorMessage        *string
+	ReleaseTargetStatus string
+	AttemptCount        int
+	ProvisioningPhase   string
+	// SettlementAttemptCount 与 ReleaseAttemptCount 分离执行重试和资金补偿重试。
+	SettlementAttemptCount   int
+	ReleaseAttemptCount      int
+	ProviderResultRecordedAt *time.Time
+	NextReconcileAt          *time.Time
+	LastReconcileError       *string
 
 	Version int64
 
@@ -209,9 +235,53 @@ type CreateCreativeRunParams struct {
 
 // CreativeRunTransitionOptions 携带状态转换的可选上下文。
 type CreativeRunTransitionOptions struct {
-	ErrorCode    *string
-	ErrorMessage *string
-	Now          *time.Time
+	ErrorCode           *string
+	ErrorMessage        *string
+	ReleaseTargetStatus string
+	Now                 *time.Time
+}
+
+// CreativeRunOutboxOperation 是创作台可恢复后台动作类型。
+type CreativeRunOutboxOperation string
+
+const (
+	CreativeRunOutboxProvision CreativeRunOutboxOperation = "provision"
+	CreativeRunOutboxSettle    CreativeRunOutboxOperation = "settle"
+	CreativeRunOutboxRelease   CreativeRunOutboxOperation = "release"
+)
+
+// CreativeRunOutboxStatus 是 outbox 记录状态。
+type CreativeRunOutboxStatus string
+
+const (
+	CreativeRunOutboxPending   CreativeRunOutboxStatus = "pending"
+	CreativeRunOutboxLeased    CreativeRunOutboxStatus = "leased"
+	CreativeRunOutboxDone      CreativeRunOutboxStatus = "done"
+	CreativeRunOutboxCancelled CreativeRunOutboxStatus = "cancelled"
+)
+
+// CreativeRunOutbox 是创作台后台补偿动作的持久投影。
+type CreativeRunOutbox struct {
+	ID           int64
+	RunID        string
+	Operation    CreativeRunOutboxOperation
+	Status       CreativeRunOutboxStatus
+	AvailableAt  time.Time
+	LeaseToken   string
+	LeaseUntil   *time.Time
+	AttemptCount int
+	LastError    string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// CreativeRunOutboxRepository 持久化并领取创作台补偿动作。
+type CreativeRunOutboxRepository interface {
+	Ensure(ctx context.Context, runID string, operation CreativeRunOutboxOperation, availableAt time.Time) error
+	Claim(ctx context.Context, workerID string, limit int, lease time.Duration) ([]CreativeRunOutbox, error)
+	Complete(ctx context.Context, id int64, leaseToken string) error
+	Retry(ctx context.Context, id int64, leaseToken string, availableAt time.Time, lastError string) error
+	Cancel(ctx context.Context, id int64, leaseToken string) error
 }
 
 // CreativeRunFilter 是用户侧任务列表过滤条件。
@@ -219,6 +289,16 @@ type CreativeRunFilter struct {
 	Status string
 	Limit  int
 	Offset int
+}
+
+// CreativeRunOutputBatchReader 可选的批量输出元数据读取接口，避免历史列表产生 N+1 查询。
+type CreativeRunOutputBatchReader interface {
+	ListCreativeRunOutputsForRuns(ctx context.Context, runIDs []string) (map[string][]*CreativeRunOutput, error)
+}
+
+// CreativeRunAllowanceMarker 持久化余额/额度预占事实，供补偿流程重启后判断是否需要释放。
+type CreativeRunAllowanceMarker interface {
+	SetCreativeRunAllowanceReserved(ctx context.Context, runID string, reserved bool) error
 }
 
 // CreativeRunRepository 持久化创作台任务元数据。
@@ -246,6 +326,16 @@ type CreativeRunRepository interface {
 	ListCreativeRunsDueForTransientCleanup(ctx context.Context, cutoff time.Time, limit int) ([]*CreativeRun, error)
 	// IncrementCreativeRunAttempt 原子递增执行尝试次数并返回最新值。
 	IncrementCreativeRunAttempt(ctx context.Context, runID string) (int, error)
+	// IncrementCreativeRunSettlementAttempt 原子递增结算尝试次数并返回最新值。
+	IncrementCreativeRunSettlementAttempt(ctx context.Context, runID string) (int, error)
+	// IncrementCreativeRunReleaseAttempt 原子递增释放尝试次数并返回最新值。
+	IncrementCreativeRunReleaseAttempt(ctx context.Context, runID string) (int, error)
+	// SetCreativeRunProvisioningPhase 持久化创建 saga 的最后完成阶段。
+	SetCreativeRunProvisioningPhase(ctx context.Context, runID, phase string) error
+	// MarkCreativeRunProviderSucceeded 记录 provider 已成功且输出已写入临时存储。
+	MarkCreativeRunProviderSucceeded(ctx context.Context, runID string, accountID int64, now time.Time) error
+	// SetCreativeRunReconcileError 记录最近一次后台补偿错误。
+	SetCreativeRunReconcileError(ctx context.Context, runID, message string, next time.Time) error
 }
 
 // CreativeRunPayload 是保存在临时 Redis 存储中的任务载荷。
@@ -366,6 +456,15 @@ type CreativeModelsResponse struct {
 	Data []CreativeModelPublic `json:"data"`
 }
 
+// CreativeCapabilitiesResponse 是创作台上传与文本校验的服务端限制契约。
+type CreativeCapabilitiesResponse struct {
+	MaxPromptChars     int      `json:"max_prompt_chars"`
+	MaxAssetBytes      int64    `json:"max_asset_bytes"`
+	MaxTotalInputBytes int64    `json:"max_total_input_bytes"`
+	MaxMaskBytes       int64    `json:"max_mask_bytes"`
+	AllowedMIMETypes   []string `json:"allowed_mime_types"`
+}
+
 // CreativeListRunsResponse 是任务列表响应体。
 type CreativeListRunsResponse struct {
 	Data    []*CreativeRunPublic `json:"data"`
@@ -396,9 +495,15 @@ func IsTerminalCreativeRunStatus(status string) bool {
 	}
 }
 
-// CanTransitionCreativeRun 校验创作台任务状态机：
-// queued -> running | cancelled；running -> succeeded | failed | cancelled | result_lost；
-// succeeded 任务在临时输出过期时可降级为 result_lost；其余终态不可逆。
+// IsCreativeRunSettlementPending 判断任务是否仍需后台结算或释放。
+func IsCreativeRunSettlementPending(status string) bool {
+	return status == CreativeRunStatusProviderSucceeded ||
+		status == CreativeRunStatusSettlementPending ||
+		status == CreativeRunStatusReleasePending
+}
+
+// CanTransitionCreativeRun 校验创作台任务状态机；provider 成功与结算/释放阶段均可恢复，
+// 只有 succeeded 在临时输出过期时允许降级为 result_lost，其余终态不可逆。
 func CanTransitionCreativeRun(from, to string) bool {
 	if from == "" || to == "" {
 		return false
@@ -413,14 +518,20 @@ func CanTransitionCreativeRun(from, to string) bool {
 	switch from {
 	case CreativeRunStatusQueued:
 		// result_lost 允许从 queued 直接进入：worker 恢复发现载荷已过期时无需先推进 running。
-		return to == CreativeRunStatusRunning || to == CreativeRunStatusCancelled || to == CreativeRunStatusResultLost
+		return to == CreativeRunStatusRunning || to == CreativeRunStatusCancelled || to == CreativeRunStatusResultLost || to == CreativeRunStatusFailed || to == CreativeRunStatusReleasePending
 	case CreativeRunStatusRunning:
 		switch to {
-		case CreativeRunStatusSucceeded, CreativeRunStatusCancelled, CreativeRunStatusResultLost:
+		case CreativeRunStatusProviderSucceeded, CreativeRunStatusSettlementPending, CreativeRunStatusSucceeded, CreativeRunStatusCancelled, CreativeRunStatusResultLost, CreativeRunStatusReleasePending:
 			return true
 		default:
 			return false
 		}
+	case CreativeRunStatusProviderSucceeded:
+		return to == CreativeRunStatusSettlementPending || to == CreativeRunStatusSucceeded || to == CreativeRunStatusCancelled || to == CreativeRunStatusResultLost
+	case CreativeRunStatusSettlementPending:
+		return to == CreativeRunStatusSucceeded || to == CreativeRunStatusCancelled || to == CreativeRunStatusResultLost
+	case CreativeRunStatusReleasePending:
+		return to == CreativeRunStatusFailed || to == CreativeRunStatusCancelled || to == CreativeRunStatusResultLost
 	default:
 		return false
 	}

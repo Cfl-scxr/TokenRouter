@@ -160,8 +160,10 @@ func RegisterUserRoutes(
 		// 服务端只保存任务元数据，图片与 prompt 明文只存于临时 Redis 存储。
 		creative := authenticated.Group("/creative")
 		{
+			creative.GET("/capabilities", h.Creative.ListCapabilities)
 			creative.GET("/models", h.Creative.ListModels)
 			creative.POST("/runs", panelRateLimiter.Heavy(), h.Creative.CreateRun)
+			creative.GET("/runs/active", h.Creative.ListActiveRuns)
 			creative.GET("/runs", h.Creative.ListRuns)
 			creative.GET("/runs/:id", h.Creative.GetRun)
 			creative.GET("/runs/:id/outputs/:index/content", h.Creative.GetOutputContent)

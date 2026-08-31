@@ -157,6 +157,12 @@ type CreativeRunWorker struct {
 	busy atomic.Int32
 }
 
+type creativeLeaseStateKey struct{}
+
+type creativeLeaseState struct {
+	lost atomic.Bool
+}
+
 // NewCreativeRunWorker 创建创作台 worker。
 func NewCreativeRunWorker(queue CreativeRunQueue, repo CreativeRunRepository, store CreativeTransientStore, executor CreativeRunExecutor, service *CreativePublicService, opts CreativeWorkerOptions, concurrencyServices ...*ConcurrencyService) *CreativeRunWorker {
 	var concurrency *ConcurrencyService
@@ -251,19 +257,19 @@ func (w *CreativeRunWorker) runOnce(ctx context.Context, stop <-chan struct{}) e
 	}
 	if creativeWorkerStopRequested(stop) {
 		// 缩容信号在 Reserve 阻塞期间到达时，把刚取出的任务立即放回 ready。
-		return w.queue.RequeueAfter(ctx, reserved.RunID, 0)
+		return w.queue.RequeueAfter(ctx, reserved.RunID, reserved.LeaseToken, 0)
 	}
 
 	lock, ok, err := w.queue.TryAcquireJobLock(ctx, reserved.RunID, w.opts.JobLockTTL)
 	if err != nil {
-		if requeueErr := w.queue.RequeueAfter(ctx, reserved.RunID, w.opts.LockConflictDelay); requeueErr != nil {
+		if requeueErr := w.queue.RequeueAfter(ctx, reserved.RunID, reserved.LeaseToken, w.opts.LockConflictDelay); requeueErr != nil {
 			return requeueErr
 		}
 		return err
 	}
 	if !ok {
 		// 锁被其他实例持有：按冲突延迟重新入队，避免任务滞留 active 停摆。
-		return w.queue.RequeueAfter(ctx, reserved.RunID, w.opts.LockConflictDelay)
+		return w.queue.RequeueAfter(ctx, reserved.RunID, reserved.LeaseToken, w.opts.LockConflictDelay)
 	}
 	defer func() {
 		_ = lock.Release(ctx)
@@ -272,28 +278,39 @@ func (w *CreativeRunWorker) runOnce(ctx context.Context, stop <-chan struct{}) e
 	// 处理期间持续心跳：刷新 active 时间戳防止 stale 恢复误重投，并续期锁。
 	hbStop := make(chan struct{})
 	hbDone := make(chan struct{})
-	go w.runJobHeartbeat(ctx, reserved.RunID, lock, hbStop, hbDone)
+	leaseLost := make(chan struct{}, 1)
+	processCtx, cancelProcess := context.WithCancel(ctx)
+	leaseState := &creativeLeaseState{}
+	processCtx = context.WithValue(processCtx, creativeLeaseStateKey{}, leaseState)
+	go w.runJobHeartbeat(processCtx, reserved.RunID, reserved.LeaseToken, lock, hbStop, hbDone, leaseLost, cancelProcess, leaseState)
 
 	w.busy.Add(1)
-	result, processErr := w.process(ctx, reserved.RunID)
+	result, processErr := w.process(processCtx, reserved.RunID)
 	w.busy.Add(-1)
 	close(hbStop)
 	<-hbDone
+	cancelProcess()
+	select {
+	case <-leaseLost:
+		// 当前 worker 已失去队列租约，不能再 ACK、重排队或提交任何结果。
+		return ErrCreativeLeaseLost
+	default:
+	}
 	if processErr != nil {
 		logger.L().Warn("creative.worker_process_failed",
 			zap.String("run_id", reserved.RunID),
 			zap.Error(processErr),
 		)
-		return w.queue.RequeueAfter(ctx, reserved.RunID, w.opts.ErrorRetryDelay)
+		return w.queue.RequeueAfter(ctx, reserved.RunID, reserved.LeaseToken, w.opts.ErrorRetryDelay)
 	}
 	if result.Terminal {
-		return w.queue.Ack(ctx, reserved.RunID)
+		return w.queue.Ack(ctx, reserved.RunID, reserved.LeaseToken)
 	}
 	delay := result.RequeueAfter
 	if delay <= 0 {
 		delay = w.opts.DefaultRequeueDelay
 	}
-	return w.queue.RequeueAfter(ctx, reserved.RunID, delay)
+	return w.queue.RequeueAfter(ctx, reserved.RunID, reserved.LeaseToken, delay)
 }
 
 // process 处理单个任务：加载载荷 → 执行 → 结算。所有结算动作幂等。
@@ -312,19 +329,58 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 	if IsTerminalCreativeRunStatus(run.Status) {
 		return CreativeProcessResult{Terminal: true}, nil
 	}
+	if run.Status == CreativeRunStatusReleasePending {
+		if err := w.service.ReleaseRun(ctx, runID); err != nil {
+			if _, incErr := w.repo.IncrementCreativeRunReleaseAttempt(ctx, runID); incErr != nil {
+				return CreativeProcessResult{}, incErr
+			}
+			_ = w.repo.SetCreativeRunReconcileError(ctx, runID, sanitizeCreativeMessage(err.Error()), time.Now().Add(w.opts.ErrorRetryDelay))
+			return CreativeProcessResult{}, err
+		}
+		_ = w.repo.SetCreativeRunReconcileError(ctx, runID, "", time.Time{})
+		return CreativeProcessResult{Terminal: true}, nil
+	}
+	if IsCreativeRunSettlementPending(run.Status) {
+		if err := w.service.SettleRun(ctx, runID); err != nil {
+			attempts, incErr := w.repo.IncrementCreativeRunSettlementAttempt(ctx, runID)
+			if incErr != nil {
+				return CreativeProcessResult{}, incErr
+			}
+			_ = w.repo.SetCreativeRunReconcileError(ctx, runID, sanitizeCreativeMessage(err.Error()), time.Now().Add(w.opts.ErrorRetryDelay))
+			if attempts >= w.opts.MaxAttempts*2 {
+				logger.L().Warn("creative.worker_settlement_pending_retries_exhausted",
+					zap.String("run_id", runID),
+					zap.Int("attempts", attempts),
+					zap.Error(err),
+				)
+			}
+			return CreativeProcessResult{RequeueAfter: w.opts.ErrorRetryDelay}, nil
+		}
+		_ = w.repo.SetCreativeRunReconcileError(ctx, runID, "", time.Time{})
+		return CreativeProcessResult{Terminal: true}, nil
+	}
+	if recovered, recoverErr := w.recoverPersistedProviderResult(ctx, run); recoverErr != nil {
+		return CreativeProcessResult{}, recoverErr
+	} else if recovered {
+		return CreativeProcessResult{Terminal: true}, nil
+	}
 
 	payload, err := w.loadPayload(ctx, runID)
 	if err != nil {
-		// 载荷或输入已过期（TTL）：provider 未执行，按 result_lost 处理并释放预占。
+		if errors.Is(err, ErrCreativeTransientUnavailable) {
+			// Redis 基础设施故障不能变成终态；保持 active 由调用方重排队。
+			return CreativeProcessResult{}, err
+		}
+		// 载荷/输入过期或损坏：provider 未执行，按 result_lost 处理并释放预占。
 		if markErr := w.service.MarkResultLost(ctx, runID, false); markErr != nil {
 			logger.L().Warn("creative.worker_mark_result_lost_failed",
 				zap.String("run_id", runID),
 				zap.Error(markErr),
 			)
+			return CreativeProcessResult{}, markErr
 		}
 		return CreativeProcessResult{Terminal: true}, nil
 	}
-
 	// 异步任务只在真正执行阶段占用用户并发槽位；未获取槽位时让出 worker 并重排任务。
 	var userRelease func()
 	if w.concurrency != nil && w.service.UserRepo != nil {
@@ -384,6 +440,12 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 	if err := w.service.MarkRunning(ctx, runID, 0); err != nil {
 		return CreativeProcessResult{}, err
 	}
+	// 先持久化实际账号，再调用 provider，确保结果元数据已落库时可恢复结算。
+	if execution.Account.ID > 0 {
+		if err := w.repo.SetCreativeRunAccountID(ctx, runID, execution.Account.ID, time.Now()); err != nil {
+			return CreativeProcessResult{}, err
+		}
+	}
 	// 执行前再次检查：任务已进入 cancelled 则不再调用上游。
 	current, err := w.repo.GetCreativeRunByRunID(ctx, runID)
 	if err != nil {
@@ -404,6 +466,9 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 	if err != nil {
 		return w.handleExecuteError(ctx, runID, err)
 	}
+	if leaseState, _ := ctx.Value(creativeLeaseStateKey{}).(*creativeLeaseState); leaseState != nil && leaseState.lost.Load() {
+		return CreativeProcessResult{}, ErrCreativeLeaseLost
+	}
 	if result == nil {
 		return w.handleExecuteError(ctx, runID, errors.New("creative executor returned no result"))
 	}
@@ -417,8 +482,19 @@ func (w *CreativeRunWorker) process(ctx context.Context, runID string) (Creative
 		})
 	}
 	if _, err := w.service.SucceedRun(ctx, runID, result.AccountID, results); err != nil {
-		// 结算失败（如计费暂时不可用）：按错误重试预算重排。
-		return w.retryOrGiveUp(ctx, runID, "SETTLEMENT_FAILED", err)
+		// provider 已成功但结果记录失败：短暂重排当前任务，不能把错误当作成功 ACK。
+		attempts, incErr := w.repo.IncrementCreativeRunAttempt(ctx, runID)
+		if incErr != nil {
+			return CreativeProcessResult{}, incErr
+		}
+		if attempts < w.opts.MaxAttempts {
+			return CreativeProcessResult{RequeueAfter: w.opts.ErrorRetryDelay}, nil
+		}
+		return CreativeProcessResult{}, err
+	}
+	// 优先在当前 lease 内完成结算；失败时 run 已是 provider_succeeded，后续只会重试结算。
+	if err := w.service.SettleRun(ctx, runID); err != nil {
+		return CreativeProcessResult{}, err
 	}
 	return CreativeProcessResult{Terminal: true}, nil
 }
@@ -451,6 +527,43 @@ func (w *CreativeRunWorker) loadPayload(ctx context.Context, runID string) (*Cre
 		payload.Mask = &CreativeInputImage{Bytes: mask, Mime: sniffCreativeImageMime(mask)}
 	}
 	return payload, nil
+}
+
+// recoverPersistedProviderResult 检查 provider 已返回但 run 状态写入前进程崩溃的窗口。
+// 输出元数据已经落库时无需再次调用 provider，直接补记 provider 成功并进入结算。
+func (w *CreativeRunWorker) recoverPersistedProviderResult(ctx context.Context, run *CreativeRun) (bool, error) {
+	if w == nil || run == nil || run.Status != CreativeRunStatusRunning {
+		return false, nil
+	}
+	outputs, err := w.repo.ListCreativeRunOutputs(ctx, run.RunID)
+	if err != nil {
+		return false, err
+	}
+	if len(outputs) == 0 {
+		return false, nil
+	}
+	successCount := 0
+	for _, output := range outputs {
+		if output == nil || output.Status == CreativeRunOutputStatusPending {
+			return false, nil
+		}
+		if output.Status == CreativeRunOutputStatusSucceeded || output.Status == CreativeRunOutputStatusAcked {
+			successCount++
+		}
+	}
+	if successCount == 0 || run.AccountID == nil || *run.AccountID <= 0 {
+		return false, nil
+	}
+	if err := w.repo.MarkCreativeRunProviderSucceeded(ctx, run.RunID, *run.AccountID, time.Now()); err != nil {
+		return false, err
+	}
+	if err := w.service.ensureCreativeOutbox(ctx, run.RunID, CreativeRunOutboxSettle); err != nil {
+		return false, err
+	}
+	if err := w.service.SettleRun(ctx, run.RunID); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // handleExecuteError 处理执行错误：可重试且未达上限 → 递增 attempt 并重排；否则 FailRun 出队。
@@ -520,10 +633,22 @@ func itoaPositive(v int) string {
 }
 
 // runJobHeartbeat 处理期间持续心跳：刷新 active 时间戳并续期锁。
-func (w *CreativeRunWorker) runJobHeartbeat(ctx context.Context, runID string, lock CreativeRunJobLock, stop <-chan struct{}, done chan<- struct{}) {
+func (w *CreativeRunWorker) runJobHeartbeat(ctx context.Context, runID, leaseToken string, lock CreativeRunJobLock, stop <-chan struct{}, done chan<- struct{}, leaseLost chan<- struct{}, cancel context.CancelFunc, leaseState *creativeLeaseState) {
 	defer close(done)
 	ticker := time.NewTicker(w.heartbeatInterval())
 	defer ticker.Stop()
+	var lost atomic.Bool
+	markLost := func() {
+		if lost.CompareAndSwap(false, true) {
+			if leaseState != nil {
+				leaseState.lost.Store(true)
+			}
+			leaseLost <- struct{}{}
+			if cancel != nil {
+				cancel()
+			}
+		}
+	}
 	for {
 		select {
 		case <-stop:
@@ -531,18 +656,37 @@ func (w *CreativeRunWorker) runJobHeartbeat(ctx context.Context, runID string, l
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := w.queue.Heartbeat(ctx, runID); err != nil && ctx.Err() == nil {
+			owned, err := w.queue.Heartbeat(ctx, runID, leaseToken)
+			if err != nil && ctx.Err() == nil {
 				logger.L().Warn("creative.worker_heartbeat_failed",
 					zap.String("run_id", runID),
 					zap.Error(err),
 				)
+				// 无法确认租约归属时按失去租约处理，避免 Redis 分区期间旧 worker 继续写结果。
+				markLost()
+				return
+			} else if err == nil && !owned {
+				logger.L().Warn("creative.worker_lease_lost",
+					zap.String("run_id", runID),
+				)
+				markLost()
+				return
 			}
 			if refresher, ok := lock.(CreativeRunJobLockRefresher); ok {
-				if err := refresher.Refresh(ctx, w.opts.JobLockTTL); err != nil && ctx.Err() == nil {
+				owned, err := refresher.Refresh(ctx, w.opts.JobLockTTL)
+				if err != nil && ctx.Err() == nil {
 					logger.L().Warn("creative.worker_lock_refresh_failed",
 						zap.String("run_id", runID),
 						zap.Error(err),
 					)
+					markLost()
+					return
+				} else if err == nil && !owned {
+					logger.L().Warn("creative.worker_lock_lost",
+						zap.String("run_id", runID),
+					)
+					markLost()
+					return
 				}
 			}
 		}

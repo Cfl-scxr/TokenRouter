@@ -100,6 +100,9 @@ func (r *smokeFakeRunRepo) TransitionCreativeRunStatus(ctx context.Context, runI
 		return service.ErrCreativeInvalidTransition
 	}
 	run.Status = toStatus
+	if opts.ReleaseTargetStatus != "" {
+		run.ReleaseTargetStatus = opts.ReleaseTargetStatus
+	}
 	return nil
 }
 
@@ -138,7 +141,7 @@ func (r *smokeFakeRunRepo) MarkCreativeRunSucceeded(ctx context.Context, runID s
 	if !ok {
 		return service.ErrCreativeRunNotFound
 	}
-	if run.Status != service.CreativeRunStatusRunning {
+	if run.Status != service.CreativeRunStatusRunning && run.Status != service.CreativeRunStatusProviderSucceeded && run.Status != service.CreativeRunStatusSettlementPending {
 		return service.ErrCreativeInvalidTransition
 	}
 	run.Status = service.CreativeRunStatusSucceeded
@@ -203,6 +206,66 @@ func (r *smokeFakeRunRepo) IncrementCreativeRunAttempt(ctx context.Context, runI
 	}
 	run.AttemptCount++
 	return run.AttemptCount, nil
+}
+
+func (r *smokeFakeRunRepo) IncrementCreativeRunSettlementAttempt(ctx context.Context, runID string) (int, error) {
+	run, ok := r.runs[runID]
+	if !ok {
+		return 0, service.ErrCreativeRunNotFound
+	}
+	run.SettlementAttemptCount++
+	return run.SettlementAttemptCount, nil
+}
+
+func (r *smokeFakeRunRepo) IncrementCreativeRunReleaseAttempt(ctx context.Context, runID string) (int, error) {
+	run, ok := r.runs[runID]
+	if !ok {
+		return 0, service.ErrCreativeRunNotFound
+	}
+	run.ReleaseAttemptCount++
+	return run.ReleaseAttemptCount, nil
+}
+
+func (r *smokeFakeRunRepo) SetCreativeRunProvisioningPhase(ctx context.Context, runID, phase string) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return service.ErrCreativeRunNotFound
+	}
+	run.ProvisioningPhase = phase
+	return nil
+}
+
+func (r *smokeFakeRunRepo) MarkCreativeRunProviderSucceeded(ctx context.Context, runID string, accountID int64, now time.Time) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return service.ErrCreativeRunNotFound
+	}
+	if accountID > 0 {
+		run.AccountID = &accountID
+	}
+	run.ProviderResultRecordedAt = &now
+	if run.Status == service.CreativeRunStatusRunning {
+		run.Status = service.CreativeRunStatusProviderSucceeded
+	}
+	return nil
+}
+
+func (r *smokeFakeRunRepo) SetCreativeRunReconcileError(ctx context.Context, runID, message string, next time.Time) error {
+	run, ok := r.runs[runID]
+	if !ok {
+		return service.ErrCreativeRunNotFound
+	}
+	if message == "" {
+		run.LastReconcileError = nil
+	} else {
+		run.LastReconcileError = &message
+	}
+	if next.IsZero() {
+		run.NextReconcileAt = nil
+	} else {
+		run.NextReconcileAt = &next
+	}
+	return nil
 }
 
 // smokeFakeBillingRepo 记录 capture/release 调用。

@@ -150,7 +150,7 @@ func TestCreativeQueueEnqueueReserveAck(t *testing.T) {
 	require.ErrorIs(t, queue.Enqueue(ctx, "bad-id"), service.ErrInvalidCreativeQueuePayload)
 
 	// Ack 后任务彻底离开队列结构。
-	require.NoError(t, queue.Ack(ctx, runID))
+	require.NoError(t, queue.Ack(ctx, runID, reserved.LeaseToken))
 	moved, err := queue.MoveDueDelayedToReady(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(t, 0, moved)
@@ -189,4 +189,28 @@ func TestCreativeQueueRecoverStaleActive(t *testing.T) {
 	// staleAfter 为 0 视为非法参数。
 	_, err = queue.RecoverStaleActive(ctx, 0, 10)
 	require.ErrorIs(t, err, service.ErrInvalidCreativeQueuePayload)
+}
+
+// TestCreativeQueueLeaseFencingOldWorkerCannotAck 校验 stale 接管后旧 worker token 不能再确认任务。
+func TestCreativeQueueLeaseFencingOldWorkerCannotAck(t *testing.T) {
+	_, client := newCreativeTestRedis(t)
+	queue := NewCreativeQueue(client, &config.Config{Creative: config.CreativeConfig{
+		QueueReadyKey: "creative:queue:ready", QueueDelayedKey: "creative:queue:delayed", QueueActiveKey: "creative:queue:active",
+		InflightKeyPrefix: "creative:queue:inflight:", InflightTTLSeconds: 3600,
+	}})
+	ctx := context.Background()
+	runID := "crun_testfencing012345"
+	require.NoError(t, queue.Enqueue(ctx, runID))
+	first, err := queue.Reserve(ctx, time.Second)
+	require.NoError(t, err)
+	// 模拟 worker A 长时间失联，恢复脚本原子转移并清除旧 token。
+	require.NoError(t, client.ZAdd(ctx, "creative:queue:active", redis.Z{Score: float64(time.Now().Add(-time.Hour).UnixMilli()), Member: runID}).Err())
+	moved, err := queue.RecoverStaleActive(ctx, time.Minute, 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, moved)
+	second, err := queue.Reserve(ctx, time.Second)
+	require.NoError(t, err)
+	require.NotEqual(t, first.LeaseToken, second.LeaseToken)
+	require.ErrorIs(t, queue.Ack(ctx, runID, first.LeaseToken), service.ErrCreativeLeaseLost)
+	require.NoError(t, queue.Ack(ctx, runID, second.LeaseToken))
 }

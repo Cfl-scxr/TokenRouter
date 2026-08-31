@@ -124,6 +124,8 @@ func reserveCreativeBalanceHold(ctx context.Context, repo UsageBillingRepository
 		run.HoldAmount = &holdAmount
 		run.EstimatedCost = result.EstimatedAmountUSD
 	}
+	// 预占成功后同步更新内存快照，后续创建失败回滚必须携带真实 allowance 状态。
+	run.AllowanceReserved = true
 	return nil
 }
 

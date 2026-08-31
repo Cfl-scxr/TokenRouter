@@ -747,8 +747,15 @@ var (
 		{Name: "plan_group_rate_multiplier_enabled", Type: field.TypeBool, Default: true},
 		{Name: "error_code", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "error_message", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "release_target_status", Type: field.TypeString, Size: 20, Default: "failed"},
 		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
 		{Name: "allowance_reserved", Type: field.TypeBool, Default: false},
+		{Name: "provisioning_phase", Type: field.TypeString, Size: 32, Default: "created"},
+		{Name: "provider_result_recorded_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "settlement_attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "release_attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "next_reconcile_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_reconcile_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "version", Type: field.TypeInt64, Default: 1},
 		{Name: "started_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "completed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -790,6 +797,43 @@ var (
 				Annotation: &entsql.IndexAnnotation{
 					Where: "workspace_id IS NOT NULL AND idempotency_key IS NOT NULL AND idempotency_key <> ''",
 				},
+			},
+		},
+	}
+	// CreativeRunOutboxColumns holds the columns for the "creative_run_outbox" table.
+	CreativeRunOutboxColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "run_id", Type: field.TypeString, Size: 64},
+		{Name: "operation", Type: field.TypeString, Size: 32},
+		{Name: "status", Type: field.TypeString, Size: 16, Default: "pending"},
+		{Name: "available_at", Type: field.TypeTime},
+		{Name: "lease_token", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "attempt_count", Type: field.TypeInt, Default: 0},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// CreativeRunOutboxTable holds the schema information for the "creative_run_outbox" table.
+	CreativeRunOutboxTable = &schema.Table{
+		Name:       "creative_run_outbox",
+		Columns:    CreativeRunOutboxColumns,
+		PrimaryKey: []*schema.Column{CreativeRunOutboxColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "creativerunoutbox_run_id_operation",
+				Unique:  true,
+				Columns: []*schema.Column{CreativeRunOutboxColumns[1], CreativeRunOutboxColumns[2]},
+			},
+			{
+				Name:    "creativerunoutbox_available_at_id",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunOutboxColumns[4], CreativeRunOutboxColumns[0]},
+			},
+			{
+				Name:    "creativerunoutbox_run_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{CreativeRunOutboxColumns[1], CreativeRunOutboxColumns[3]},
 			},
 		},
 	}
@@ -2507,6 +2551,7 @@ var (
 		BatchImageItemsTable,
 		BatchImageJobsTable,
 		CreativeRunsTable,
+		CreativeRunOutboxTable,
 		CreativeRunOutputsTable,
 		DataShareSessionsTable,
 		ErrorPassthroughRulesTable,
@@ -2592,6 +2637,9 @@ func init() {
 	}
 	CreativeRunsTable.Annotation = &entsql.Annotation{
 		Table: "creative_runs",
+	}
+	CreativeRunOutboxTable.Annotation = &entsql.Annotation{
+		Table: "creative_run_outbox",
 	}
 	CreativeRunOutputsTable.Annotation = &entsql.Annotation{
 		Table: "creative_run_outputs",

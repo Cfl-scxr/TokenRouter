@@ -38,6 +38,10 @@ OpenAI 平台拥有以下正式协议族：
 | Images | OpenAI 图片生成/编辑；当前网关保留同步生命周期，批量图片由 Gemini/Vertex 专题定义 |
 | Realtime/Live/sideband、Alpha Search | 仅 OpenAI 分组，并受分组开关、账号类型和 transport capability 限制 |
 
+### 创作台 Images 契约
+
+创作台异步执行器的 `generate` 使用 `/v1/images/generations` JSON，`edit`/`inpaint` 使用 `/v1/images/edits` multipart；固定发送 PNG、单张 `n=1`，并按最终模型能力透传尺寸、质量和背景。GPT Image 模型不发送 `response_format`（其响应固定包含 base64），只有 DALL-E 模型保留 `response_format=b64_json`。inpaint 的 mask 必须是与源图同尺寸、4 MiB 以内的 PNG，透明像素表示需要重绘区域。
+
 OpenAI 分组支持 Messages、Responses 和 Chat，新建时默认启用 Responses 与 Chat；三项都可关闭。已有分组迁移时仅在旧 `allow_messages_dispatch` 开启时加入 Messages。该旧字段只作为 Messages 的弃用兼容镜像，专用 `messages_dispatch_model_config` 仍只负责 Claude 到 GPT 模型映射；系列和精确映射都只在目标值非空时生效，全部留空时不执行分组层模型映射。Responses WebSocket 是 OpenAI/Grok 的原生传输能力，不因其它平台启用兼容 Responses 而开放。
 
 ### API Key 文本配置
