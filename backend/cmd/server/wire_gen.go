@@ -238,7 +238,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	dashboardAggregationService := service.ProvideDashboardAggregationService(dashboardAggregationRepository, timingWheelService, leaderLockCache, db, configConfig, preAggregationSettingsService)
 	opsAggregationService := service.ProvideOpsAggregationService(opsRepository, settingRepository, db, redisClient, configConfig, preAggregationSettingsService)
 	creativeRunRepository := repository.NewCreativeRunRepository(client)
-	creativeRunOutboxRepository := repository.NewCreativeRunOutboxRepository(db)
 	creativeManagedKeyRepository := repository.ProvideCreativeManagedKeyRepository(client, db)
 	creativeUserRepository := service.ProvideCreativeUserRepository(userRepository)
 	creativeAccountRepository := service.ProvideCreativeAccountRepository(accountRepository)
@@ -249,7 +248,9 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	contentModerationRepository := repository.NewContentModerationRepository(db)
 	contentModerationHashCache := repository.NewContentModerationHashCache(redisClient)
 	contentModerationService := service.ProvideContentModerationService(settingRepository, contentModerationRepository, contentModerationHashCache, groupRepository, userRepository, proxyRepository, apiKeyAuthCacheInvalidator, emailService)
-	creativePublicService := service.NewCreativePublicService(creativeRunRepository, creativeManagedKeyRepository, creativeUserRepository, creativeAccountRepository, creativeGroupRepository, creativeUserGroupRateRepository, creativeRunQueue, creativeTransientStore, usageBillingRepository, usageLogRepository, billingService, modelPricingResolver, contentModerationService, apiKeyAuthCacheInvalidator, settingService, configConfig, creativeRunOutboxRepository)
+	creativeRunOutboxRepository := repository.NewCreativeRunOutboxRepository(db)
+	v2 := service.ProvideCreativeRunOutboxRepositories(creativeRunOutboxRepository)
+	creativePublicService := service.NewCreativePublicService(creativeRunRepository, creativeManagedKeyRepository, creativeUserRepository, creativeAccountRepository, creativeGroupRepository, creativeUserGroupRateRepository, creativeRunQueue, creativeTransientStore, usageBillingRepository, usageLogRepository, billingService, modelPricingResolver, contentModerationService, apiKeyAuthCacheInvalidator, settingService, configConfig, v2...)
 	settingHandler := handler.ProvideAdminSettingHandler(settingService, emailService, turnstileService, aliyunCaptchaService, opsService, paymentConfigService, paymentService, userAttributeService, notificationEmailService, totpService, userService, preAggregationSettingsService, dashboardAggregationService, opsAggregationService, creativePublicService)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)
@@ -347,10 +348,10 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService, leaderLockCache, db)
 	userPlatformQuotaUsageFlusher := service.ProvideUserPlatformQuotaUsageFlusher(configConfig, billingCache, serviceUserPlatformQuotaRepository, timingWheelService)
 	cnProviderBalanceCheckService := service.ProvideCNProviderBalanceCheckService(accountRepository, upstreamUsageService, configConfig, leaderLockCache, db)
-	v2 := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, announcementExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, creativeWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, dataSharingService, dataSharingCaptureWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, qoderOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, groupAvailabilityProbeRunnerService, backupService, paymentOrderExpiryService, userPlatformQuotaUsageFlusher, tlsFingerprintCollectorService, ollamaCloudUsageService, auditLogService, cnProviderBalanceCheckService)
+	v3 := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, opsService, opsIngressRejectAggregator, apiKeyService, authCacheInvalidationWorker, schedulerSnapshotService, tokenRefreshService, accountExpiryService, proxyExpiryService, subscriptionExpiryService, announcementExpiryService, usageCleanupService, idempotencyCleanupService, batchImageCleanupService, batchImageWorkerRuntime, creativeWorkerRuntime, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, dataSharingService, dataSharingCaptureWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, qoderOAuthService, grokOAuthService, openAIGatewayService, scheduledTestRunnerService, groupAvailabilityProbeRunnerService, backupService, paymentOrderExpiryService, userPlatformQuotaUsageFlusher, tlsFingerprintCollectorService, tlsFingerprintProfileService, tlsFingerprintRouterService, ollamaCloudUsageService, auditLogService, cnProviderBalanceCheckService)
 	application := &Application{
 		Server:  httpServer,
-		Cleanup: v2,
+		Cleanup: v3,
 	}
 	return application, nil
 }
@@ -417,6 +418,8 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	tlsFingerprintCollector *service.TLSFingerprintCollectorService,
+	tlsFingerprintProfile *service.TLSFingerprintProfileService,
+	tlsFingerprintRouter *service.TLSFingerprintRouterService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
 	cnUsageMonitor *service.CNProviderBalanceCheckService,
@@ -636,6 +639,18 @@ func provideCleanup(
 			{"PaymentOrderExpiryService", func() error {
 				if paymentOrderExpiry != nil {
 					paymentOrderExpiry.Stop()
+				}
+				return nil
+			}},
+			{"TLSFingerprintProfileService", func() error {
+				if tlsFingerprintProfile != nil {
+					tlsFingerprintProfile.Stop()
+				}
+				return nil
+			}},
+			{"TLSFingerprintRouterService", func() error {
+				if tlsFingerprintRouter != nil {
+					tlsFingerprintRouter.Stop()
 				}
 				return nil
 			}},

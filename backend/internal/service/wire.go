@@ -110,6 +110,11 @@ func ProvideCreativeUserGroupRateRepository(repo UserGroupRateRepository) Creati
 	return repo
 }
 
+// ProvideCreativeRunOutboxRepositories 为 Wire 的可变参数构造显式 slice。
+func ProvideCreativeRunOutboxRepositories(repo CreativeRunOutboxRepository) []CreativeRunOutboxRepository {
+	return []CreativeRunOutboxRepository{repo}
+}
+
 // ProvideBatchImageCleanupService 创建并启动批量图片清理服务。
 func ProvideBatchImageCleanupService(repo BatchImageRepository, accountRepo AccountRepository, cfg *config.Config) *BatchImageCleanupService {
 	svc := NewBatchImageCleanupService(repo, accountRepo, cfg)
@@ -881,6 +886,7 @@ var ProviderSet = wire.NewSet(
 	ProvideCreativeGroupRepository,
 	ProvideCreativeAccountRepository,
 	ProvideCreativeUserGroupRateRepository,
+	ProvideCreativeRunOutboxRepositories,
 	NewCreativeExecutor,
 	wire.Bind(new(CreativeRunExecutor), new(*CreativeExecutor)),
 	ProvideCreativeWorkerRuntime,

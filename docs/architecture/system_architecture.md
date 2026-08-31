@@ -69,6 +69,8 @@
 
 收到终止信号后先给 HTTP server 五秒完成优雅关闭，停止接收新请求；函数返回时执行应用 `Cleanup`。关闭过程有独立三十秒上下文：大部分互不依赖的 worker 并行停止，然后按顺序停止数据共享/配额等需要 drain 或 flush 的服务，最后关闭 Redis 和 Ent/PostgreSQL。单个关闭步骤失败会记录日志并继续，超时会告警而不会无限阻塞进程退出。
 
+依赖 Redis Pub/Sub 的 TLS 指纹 Profile/Router 缓存订阅由对应服务在 Redis 关闭前主动取消并等待退出；Redis 被动关闭导致的 channel 结束只作为异常路径记录告警。
+
 新增有 goroutine、定时器、缓冲写或外部连接的服务时，必须同时回答三个问题：由哪个 provider 启动、停止方法是否幂等、在 Redis/PostgreSQL 关闭前需要完成什么 drain/flush。只加入 Wire provider set 而不加入 `provideCleanup` 会留下关闭竞态。
 
 ## 数据所有权

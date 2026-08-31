@@ -116,6 +116,8 @@ func provideCleanup(
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
 	tlsFingerprintCollector *service.TLSFingerprintCollectorService,
+	tlsFingerprintProfile *service.TLSFingerprintProfileService,
+	tlsFingerprintRouter *service.TLSFingerprintRouterService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	auditLog *service.AuditLogService,
 	cnUsageMonitor *service.CNProviderBalanceCheckService,
@@ -336,6 +338,18 @@ func provideCleanup(
 			{"PaymentOrderExpiryService", func() error {
 				if paymentOrderExpiry != nil {
 					paymentOrderExpiry.Stop()
+				}
+				return nil
+			}},
+			{"TLSFingerprintProfileService", func() error {
+				if tlsFingerprintProfile != nil {
+					tlsFingerprintProfile.Stop()
+				}
+				return nil
+			}},
+			{"TLSFingerprintRouterService", func() error {
+				if tlsFingerprintRouter != nil {
+					tlsFingerprintRouter.Stop()
 				}
 				return nil
 			}},
