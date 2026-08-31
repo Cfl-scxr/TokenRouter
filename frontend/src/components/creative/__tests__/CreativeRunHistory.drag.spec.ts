@@ -85,4 +85,25 @@ describe('CreativeRunHistory 拖放', () => {
     )
     wrapper.unmount()
   })
+
+  it('在历史入口显示活动任务数量', () => {
+    const asset: LocalAsset = {
+      key: outputAssetKey(run.id, 0),
+      kind: 'output',
+      blob: new Blob(['image'], { type: 'image/png' }),
+      runId: run.id,
+      outputIndex: 0,
+      createdAt: Date.now(),
+    }
+    const studio = createStudio(asset)
+    const wrapper = mount(CreativeRunHistory, {
+      props: { studio, activeRunCount: 1 },
+      global: { stubs: { Icon: true } },
+    })
+
+    const badge = wrapper.find('button[aria-expanded="false"] span')
+    expect(badge.exists()).toBe(true)
+    expect(badge.text()).toBe('1')
+    wrapper.unmount()
+  })
 })

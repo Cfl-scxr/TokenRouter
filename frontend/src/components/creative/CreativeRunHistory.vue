@@ -1,6 +1,7 @@
 <template>
   <!-- 历史入口：画布区域右上角的手写 SVG 图标按钮 -->
   <button
+    ref="historyButtonRef"
     type="button"
     class="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-xl border border-primary-900/10 bg-white/90 text-gray-600 shadow-md backdrop-blur transition-colors hover:text-gray-900 dark:border-dark-600 dark:bg-dark-900/90 dark:text-gray-300 dark:hover:text-gray-100"
     :class="open && 'text-primary-700 dark:text-primary-300'"
@@ -9,6 +10,13 @@
     @click="open = !open"
   >
     <HistoryIcon />
+    <!-- 活动任务数量：保持在图标右上角，不展开历史也能感知后台进度。 -->
+    <span
+      v-if="props.activeRunCount > 0"
+      class="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white shadow-sm ring-2 ring-white dark:ring-dark-900"
+    >
+      {{ props.activeRunCount > 99 ? '99+' : props.activeRunCount }}
+    </span>
   </button>
 
   <!-- 悬浮历史列表：点击展开 / 收起，选择行后不自动收起 -->
@@ -163,9 +171,12 @@ type Studio = ReturnType<typeof useCreativeStudio>
 
 interface Props {
   studio: Studio
+  activeRunCount?: number
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  activeRunCount: 0,
+})
 // 本地别名：studio 为 props 传入的共享状态机，子组件经它读写
 const studio = props.studio
 const { t } = useI18n()
@@ -177,6 +188,8 @@ const open = ref(false)
 const expandedRunId = ref<string | null>(null)
 // 手动刷新状态独立维护，确保快速响应也能先渲染出旋转反馈
 const refreshing = ref(false)
+const historyButtonRef = ref<HTMLButtonElement | null>(null)
+defineExpose({ historyButtonRef })
 
 // 展开区的 objectURL 缓存：切换收起或卸载时统一回收
 const expandedUrls = new Map<string, string>()

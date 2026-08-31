@@ -218,6 +218,7 @@
           {{ t('creative.panel.estimatedCost', { cost: formatBalanceAmount(studio.estimatedCost.value, { fractionDigits: 3 }) }) }}
         </span>
         <button
+          ref="sendButtonRef"
           type="button"
           class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="!studio.canGenerate.value"
@@ -275,6 +276,8 @@ const TEXTAREA_MAX_HEIGHT = 160
 
 const rootRef = ref<HTMLDivElement | null>(null)
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const sendButtonRef = ref<HTMLButtonElement | null>(null)
+defineExpose({ sendButtonRef })
 // 当前展开的调参面板（同时只开一个）
 const openPanel = ref<'model' | 'params' | 'operation' | null>(null)
 // 调参弹层的水平定位（内联样式）：宽度取 320px、输入框宽、视口宽 - 3.5rem 三者最小值，

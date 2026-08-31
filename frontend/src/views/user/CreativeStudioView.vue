@@ -6,7 +6,7 @@
       class="relative -mx-4 -mb-4 -mt-4 h-[calc(100dvh-3.5rem)] md:-mx-6 md:-mb-6 md:-mt-5 lg:-mx-8 lg:-mb-8 lg:-mt-4"
     >
       <CreativeCanvas ref="canvasRef" class="absolute inset-0" :operation="studio.operation.value" :allowed-mimes="studio.capabilities.value.allowed_mime_types" @error="onCanvasError" />
-      <CreativeRunHistory :studio="studio" />
+      <CreativeRunHistory ref="historyRef" :studio="studio" :active-run-count="activeRunCount" />
 
       <!-- 设置：左上角齿轮按钮，点击向下展开设置项 -->
       <div class="absolute left-3 top-3 z-20">
@@ -57,9 +57,20 @@
       <!-- 聊天式输入框：固定底部居中，不随选中图片移动 -->
       <div class="absolute bottom-4 left-1/2 z-30 -translate-x-1/2">
         <CreativeComposer
+          ref="composerRef"
           :studio="studio"
           @generate="onGenerate"
         />
+      </div>
+
+      <!-- 提交反馈：从真实发送按钮飞向历史入口，坐标由两个按钮的运行时位置决定。 -->
+      <div
+        v-if="submissionAnimationVisible"
+        class="creative-submit-flight"
+        :style="submissionAnimationStyle"
+        aria-hidden="true"
+      >
+        <Icon name="mail" size="sm" />
       </div>
 
       <!-- 生成状态胶囊：仅桌面端左下角显示，移动端隐藏以避免占用画布空间 -->
@@ -114,6 +125,8 @@ const appStore = useAppStore()
 const studio = useCreativeStudio()
 
 const canvasRef = ref<InstanceType<typeof CreativeCanvas> | null>(null)
+const composerRef = ref<InstanceType<typeof CreativeComposer> | null>(null)
+const historyRef = ref<InstanceType<typeof CreativeRunHistory> | null>(null)
 const stageRef = ref<HTMLDivElement | null>(null)
 const showClearConfirm = ref(false)
 // 设置弹层开关（齿轮在画布左上角，弹层向下展开）
@@ -121,6 +134,14 @@ const settingsOpen = ref(false)
 // 终态（非成功）状态胶囊几秒后自动消隐
 let pillHideTimer: ReturnType<typeof setTimeout> | null = null
 const pillHidden = ref(false)
+const submissionAnimationVisible = ref(false)
+const submissionAnimationStyle = ref<Record<string, string>>({})
+let submissionAnimationTimer: ReturnType<typeof setTimeout> | null = null
+let submissionAnimationFrame: number | null = null
+
+const activeRunCount = computed(
+  () => studio.runHistory.value.filter((run) => !CREATIVE_RUN_TERMINAL_STATUSES.includes(run.status)).length,
+)
 
 // ==================== 生命周期 ====================
 
@@ -141,7 +162,59 @@ onMounted(() => {
 onBeforeUnmount(() => {
   studio.registerCanvasBridge(null)
   if (pillHideTimer) clearTimeout(pillHideTimer)
+  if (submissionAnimationFrame !== null && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(submissionAnimationFrame)
+    submissionAnimationFrame = null
+  }
+  if (submissionAnimationTimer) clearTimeout(submissionAnimationTimer)
 })
+
+// 计算提交反馈的起点与终点，保证桌面端和移动端都从实际按钮飞向历史入口。
+function playSubmissionAnimation(): void {
+  cancelSubmissionAnimation()
+  const stage = stageRef.value
+  const source = composerRef.value?.sendButtonRef
+  const target = historyRef.value?.historyButtonRef
+  if (!stage || !source || !target) return
+  const stageRect = stage.getBoundingClientRect()
+  const sourceRect = source.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const startX = sourceRect.left + sourceRect.width / 2 - stageRect.left
+  const startY = sourceRect.top + sourceRect.height / 2 - stageRect.top
+  const endX = targetRect.left + targetRect.width / 2 - stageRect.left
+  const endY = targetRect.top + targetRect.height / 2 - stageRect.top
+  submissionAnimationStyle.value = {
+    left: `${startX}px`,
+    top: `${startY}px`,
+    '--flight-x': `${endX - startX}px`,
+    '--flight-y': `${endY - startY}px`,
+  }
+  submissionAnimationVisible.value = false
+  if (typeof requestAnimationFrame === 'function') {
+    submissionAnimationFrame = requestAnimationFrame(() => {
+      submissionAnimationFrame = null
+      submissionAnimationVisible.value = true
+    })
+  } else {
+    submissionAnimationVisible.value = true
+  }
+  if (submissionAnimationTimer) clearTimeout(submissionAnimationTimer)
+  // 比 CSS 动画多留 100ms，确保末帧到达历史按钮后再移除节点。
+  submissionAnimationTimer = setTimeout(() => {
+    submissionAnimationVisible.value = false
+    submissionAnimationTimer = null
+  }, 1100)
+}
+
+function cancelSubmissionAnimation(): void {
+  submissionAnimationVisible.value = false
+  if (submissionAnimationFrame !== null && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(submissionAnimationFrame)
+    submissionAnimationFrame = null
+  }
+  if (submissionAnimationTimer) clearTimeout(submissionAnimationTimer)
+  submissionAnimationTimer = null
+}
 
 // ==================== 生成状态胶囊 ====================
 
@@ -208,6 +281,7 @@ watch(
 
 // 提交生成：edit 取画布上全部图片作多参考图；inpaint 取选中图片 + 画笔 mask
 async function onGenerate(): Promise<void> {
+  playSubmissionAnimation()
   const operation = studio.operation.value
   let sourceBlobs: Blob[] = []
   let maskBlob: Blob | null = null
@@ -215,12 +289,14 @@ async function onGenerate(): Promise<void> {
     // 编辑模式以用户选择的参考图集合为准（点击单选、Shift 加选）
     sourceBlobs = (await canvasRef.value?.getEditRefBlobs()) ?? []
     if (!sourceBlobs.length) {
+      cancelSubmissionAnimation()
       studio.error.value = t('creative.panel.selectImageHint')
       return
     }
   } else if (operation === 'inpaint') {
     const blob = await canvasRef.value?.getSelectedImageBlob()
     if (!blob) {
+      cancelSubmissionAnimation()
       studio.error.value = t('creative.panel.selectImageHint')
       return
     }
@@ -233,11 +309,13 @@ async function onGenerate(): Promise<void> {
       console.error('Failed to export mask:', error)
     }
     if (!maskBlob) {
+      cancelSubmissionAnimation()
       studio.error.value = t('creative.error.maskRequired')
       return
     }
   }
-  await studio.createRun({ sourceBlobs, maskBlob })
+  const submitted = await studio.createRun({ sourceBlobs, maskBlob })
+  if (!submitted) cancelSubmissionAnimation()
 }
 
 function onCanvasError(message: string): void {
@@ -292,7 +370,41 @@ async function onClearLocalData(): Promise<void> {
   transform: translateY(-6px) scale(0.97);
 }
 
+/* 信封沿运行时计算的向量匀速飞行，透明度收尾避免落到历史按钮上时产生遮挡。 */
+.creative-submit-flight {
+  @apply pointer-events-none absolute z-40 flex h-7 w-7 items-center justify-center rounded-md border border-primary-500/40 bg-white/95 text-primary-600 shadow-lg dark:border-primary-400/40 dark:bg-dark-800/95 dark:text-primary-300;
+  margin-left: -0.875rem;
+  margin-top: -0.875rem;
+  animation: creative-submit-flight 1000ms linear forwards;
+}
+
+@keyframes creative-submit-flight {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.65) rotate(-12deg);
+  }
+
+  14% {
+    opacity: 1;
+    transform: translate3d(calc(var(--flight-x) * 0.14), calc(var(--flight-y) * 0.14 - 8px), 0) scale(1) rotate(-4deg);
+  }
+
+  92% {
+    opacity: 1;
+    transform: translate3d(calc(var(--flight-x) * 0.92), calc(var(--flight-y) * 0.92), 0) scale(0.78) rotate(10deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--flight-x), var(--flight-y), 0) scale(0.72) rotate(12deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .creative-submit-flight {
+    animation-duration: 1ms;
+  }
+
   .settings-panel-enter-active,
   .settings-panel-leave-active {
     transition-duration: 1ms;
