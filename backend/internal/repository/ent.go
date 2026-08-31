@@ -22,14 +22,13 @@ import (
 )
 
 const (
-	maxDatabaseInitializationAttempts = 8
-	databaseInitializationRetryBase   = time.Second
-	databaseInitializationRetryMax    = 30 * time.Second
+	maxDatabaseInitializationRetries = 8
+	databaseInitializationRetryBase  = time.Second
+	databaseInitializationRetryMax   = 30 * time.Second
 )
 
-// initializeDatabaseWithRetry retries only errors that indicate PostgreSQL is
-// temporarily unavailable during startup. Permanent configuration, migration,
-// and data errors are returned immediately so they remain visible to operators.
+// initializeDatabaseWithRetry 仅对 PostgreSQL 启动阶段的暂时错误重试；配置、迁移
+// 和数据等永久错误立即返回，确保运维人员能看到真实故障。
 func initializeDatabaseWithRetry(ctx context.Context, initialize func(context.Context) error) error {
 	return initializeDatabaseWithRetryWithWait(ctx, initialize, waitForDatabaseInitializationRetry)
 }
@@ -39,32 +38,29 @@ func initializeDatabaseWithRetryWithWait(
 	initialize func(context.Context) error,
 	wait func(context.Context, time.Duration) error,
 ) error {
-	var lastErr error
-	for attempt := 1; attempt <= maxDatabaseInitializationAttempts; attempt++ {
+	for attempt := 1; ; attempt++ {
 		if err := initialize(ctx); err == nil {
 			return nil
 		} else {
-			lastErr = err
-			if !isTransientDatabaseInitializationError(err) || attempt == maxDatabaseInitializationAttempts {
+			if !isTransientDatabaseInitializationError(err) || attempt > maxDatabaseInitializationRetries {
+				return err
+			}
+
+			delay := databaseInitializationRetryBase * time.Duration(1<<(attempt-1))
+			if delay > databaseInitializationRetryMax {
+				delay = databaseInitializationRetryMax
+			}
+			slog.Warn("database initialization temporarily unavailable; retrying",
+				"retry", attempt,
+				"max_retries", maxDatabaseInitializationRetries,
+				"retry_in", delay,
+				"error", err,
+			)
+			if err := wait(ctx, delay); err != nil {
 				return err
 			}
 		}
-
-		delay := databaseInitializationRetryBase * time.Duration(1<<(attempt-1))
-		if delay > databaseInitializationRetryMax {
-			delay = databaseInitializationRetryMax
-		}
-		slog.Warn("database initialization temporarily unavailable; retrying",
-			"attempt", attempt,
-			"max_attempts", maxDatabaseInitializationAttempts,
-			"retry_in", delay,
-			"error", lastErr,
-		)
-		if err := wait(ctx, delay); err != nil {
-			return err
-		}
 	}
-	return lastErr
 }
 
 func waitForDatabaseInitializationRetry(ctx context.Context, delay time.Duration) error {
