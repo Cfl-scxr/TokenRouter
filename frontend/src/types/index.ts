@@ -719,10 +719,13 @@ export interface GroupAvailabilityProbeConfig {
   max_retries?: number
   user_agent?: string
 }
+export type ReasoningEffortMatchType = 'exact' | 'prefix' | 'suffix'
 
 export interface ReasoningEffortMapping {
   from: string
   to: string
+  match_type?: ReasoningEffortMatchType
+  model?: string
 }
 
 export interface Group {
