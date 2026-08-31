@@ -263,6 +263,8 @@ export interface PublicSettings {
   team_self_service_enabled?: boolean
   // 旧版公开设置可能缺少该字段，调用方应仅在明确为 false 时关闭入口。
   data_sharing_enabled?: boolean
+  // 旧版公开设置可能缺少该字段，调用方应仅在明确为 false 时关闭创作台入口。
+  creative_enabled?: boolean
   table_default_page_size: number
   table_page_size_options: number[]
   usage_ranking_limit: number

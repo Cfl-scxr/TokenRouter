@@ -14,6 +14,8 @@
 - [请求关联](#请求关联)：正确透传 request ID。
 - [变更规则](#变更规则)：新增接口时检查。
 
+新增创作台路由时读取[创作台](../domains/creative_studio.md)领域文档核对生命周期、幂等与留存边界。
+
 ## 全局入口
 
 `SetupRouter` 在一个 Gin engine 上安装共同中间件并依次注册 common、auth、user、admin、gateway、payment 和 page routes。主要全局顺序为：
@@ -66,6 +68,21 @@ OAuth 登录 start 对 GitHub、Google、LinuxDo、DingTalk、WeChat 和 OIDC �
 
 `POST /api/v1/auth/oauth/google/one-tap` 接受浏览器 GIS 返回的 `credential`、本地 `redirect` 及可选 `aff_code`/`promo_code`。credential 上限为 16 KiB，入口按客户端 IP 使用 Redis `20 次/分钟` fail-close 限流；不接收 Client Secret，也不能记录 token 或未验证 claims。验证和已有用户登录成功时，统一 envelope 的 `data` 返回 `status=authenticated` 与标准 `access_token`、`refresh_token`、`expires_in`、`token_type`；新用户只返回 `status=registration_required` 与本地 redirect，并通过 HttpOnly pending cookies 继续 `/auth/oauth/callback` 的既有补全状态机。One Tap 设置或 Google OAuth 配置无效、backend mode、腾讯/阿里云动作验证码启用、注册关闭、token 无效或用户状态不可登录时拒绝。Turnstile 单独开启时不新增该入口的校验范围。
 
+创作台（Creative Studio）是 `/api/v1/creative/*` 用户 JWT 路由族（`routes/user.go`，统一 envelope），供个人图片生成/编辑/局部重绘任务使用：
+
+```text
+GET  /api/v1/creative/models
+GET  /api/v1/creative/capabilities
+POST /api/v1/creative/runs
+GET  /api/v1/creative/runs
+GET  /api/v1/creative/runs/active?limit=100&cursor=<opaque>
+GET  /api/v1/creative/runs/{id}
+GET  /api/v1/creative/runs/{id}/outputs/{index}/content
+POST /api/v1/creative/runs/{id}/outputs/{index}/ack
+```
+
+除 `GET /creative/models` 与 `GET /creative/capabilities` 外，创作台任务创建、历史、活动、详情、输出 content 和 ack 路由都要求 `X-Creative-Workspace-ID` 请求头（规范化小写 UUID）。缺失返回 `400 CREATIVE_WORKSPACE_REQUIRED`，非法值返回 `400 CREATIVE_WORKSPACE_INVALID`；工作区不匹配的任务统一返回 `404 CREATIVE_RUN_NOT_FOUND`。`GET /creative/capabilities` 返回 `max_prompt_chars`、`max_asset_bytes`、`max_total_input_bytes`、`max_mask_bytes` 和允许的 PNG/JPEG/WebP MIME。`GET /creative/runs/active` 以不透明 cursor 分页返回全部活动状态，不受历史页大小限制。`POST /creative/runs` 接受 `multipart/form-data`，除素材字段外可提交 `image_size`、`aspect_ratio`、`quality`、`background` 与 `thinking_level`；客户端不能指定输出格式，不接受 `output_format`、`output_compression` 或旧的 `response_mime_type` 字段，输出 metadata 的 `mime_type` 保留供应商实际返回的 MIME。所有值按 `GET /creative/models` 返回的模型级能力校验，每次任务固定生成一张图片。平台操作交集为：OpenAI `generate`/`edit`/`inpaint`，Gemini/Grok `generate`/`edit`；Grok 编辑最多 3 张源图，Gemini 不接受独立 mask。接口只接受上传文件、不接受远程 URL，并受 `Idempotency-Key` 头约束：同一用户+工作区同键同体重放返回原任务（`idempotent_replay=true`），同一用户+工作区同键不同体返回 `409 CREATIVE_IDEMPOTENCY_CONFLICT`，不同工作区可使用同名键创建独立任务。输出内容只有在结算完成的可交付终态可读取；ack 先写数据库再删除服务端临时输出，删除失败由后台清理补偿。输出内容路由在临时输出过期或丢失时返回 410 语义（`CREATIVE_OUTPUT_EXPIRED`/`CREATIVE_RESULT_LOST`）并把任务降级为 `result_lost`；服务端只保存任务元数据，图片与 prompt 明文只存于 Redis 临时键，细节与限制见[创作台](../domains/creative_studio.md)。
+
 部分下载路由使用短期签名票据，以支持浏览器原生下载大文件；票据只授权一个预生成资源，不能等价为用户 JWT。模型列表、用量和既有批任务管理即使跳过消费余额检查，仍要执行 Key 身份和资源归属验证。
 
 上游声明倍率探测与 Key 账单自省已从路由表完全注销：`GET /v1/sub2api/billing`，`GET|PUT /api/v1/admin/accounts/upstream-billing-probe/settings`，`POST /api/v1/admin/accounts/upstream-billing-probe/batch`，以及 `PUT|POST /api/v1/admin/accounts/:id/upstream-billing-probe` 都返回普通 `404`。这些路径没有兼容 handler、重定向或弃用响应，也不再享有 API Key 非消费请求豁免。
@@ -73,6 +90,8 @@ OAuth 登录 start 对 GitHub、Google、LinuxDo、DingTalk、WeChat 和 OIDC �
 账号批量删除使用 `POST /api/v1/admin/accounts/batch-delete`，请求体为 `account_ids`。服务端先去除非正数和重复 ID，再以最多 5 路并发执行删除；同批选择父账号及其影子账号时只删除根账号一次，并将级联影响映射回逐账号结果。响应返回稳定排序的 `success_ids`、`failed_ids` 和错误明细，单项失败不会取消其它账号。管理端“全选筛选结果”先以同一筛选快照分页读取轻量 ID，任何分页缺失或重复都保留原选择，不得提交部分集合。
 
 管理员账号连接测试使用 `POST /api/v1/admin/accounts/:id/test`，响应为 SSE。请求体可包含 `model_id`、`prompt`、OpenAI 专用的 `mode`，以及 `test_type`（`text` 或 `image`）；历史客户端也可用 `test_mode` 作为类型字段别名。管理端必须显式发送 `test_type`：普通 `text` 始终走文字测试路径并使用自定义提示词，`image` 始终走图片测试路径并使用自定义提示词；OpenAI 的 `compact` 与 `legacy_compact` 是固定载荷的能力探测，不使用自定义提示词。服务端只对未携带该字段的旧调用保留按模型名兼容判断。图片测试结果以 SSE `image` 事件返回，文字结果以 `content` 事件返回；不具备对应平台图片端点的账号返回流式错误事件。
+
+管理员设置接口 `GET|PUT /api/v1/admin/settings` 的 `creative_model_settings` 字段用于维护创作台全局生图模型白名单，结构为 `[{"group_id":123,"model":"gpt-image-2","operations":["generate","edit","inpaint"]}]`。省略字段保留现值，显式空数组清空；服务端校验能力值和 `(group_id, model)` 唯一性，并在审计中只记录字段是否发生变化。保存时按实际分组平台规范化：Gemini 移除 `inpaint`，移除后无能力的条目删除；无法解析的平台暂时保留，但运行时仍不放行。`creative_worker_count` 同属该接口，要求为大于 0 的整数，默认 128，保存后热更新当前实例的创作台 worker 池。`GET /api/v1/admin/settings/creative-model-candidates` 返回当前 active、启用图片生成且存在可调度图片模型的 `{group_id, group_name, platform, model, operations}` 候选，不按管理员用户权限过滤；OpenAI 返回三项能力，Gemini/Grok 返回 `generate`/`edit`。`GET /api/v1/admin/settings/creative-worker-status` 返回创作台任务 worker 池快照 `{running, worker_count, busy_workers}`：运行中 `worker_count` 为当前活动 worker 数、`busy_workers` 为正在处理任务的 worker 数，管理端设置页据此轮询展示当前使用情况；未运行时返回 `running=false` 的零值快照，由前端回退到 `creative_worker_count` 配置值。
 
 账号高级调度评分诊断仅限管理员：`GET /api/v1/admin/accounts/:id/advanced-scheduler-score` 返回该账号所属高级分组摘要；携带 `group_id` 时返回指定高级分组的完整候选池、硬过滤、有效配置、指标原值/归一化值/贡献、Top-K 权重与实际活动池概率及平台策略提示。订阅优先启用且存在合格订阅账号时，普通账号标记为延后且不进入本轮概率；开启粘性加权时 previous-response 和 session 只影响 Top-K 权重，关闭时有效硬粘性账号按实际强制选择显示概率 1。`POST /api/v1/admin/accounts/:id/advanced-scheduler-score/preview` 接受 `group_id`、可选 `requested_model`、`sticky_account_id` 和 `previous_response_account_id`，用于无状态的评分模拟；previous-response 只对 OpenAI 分组有效，其它平台返回 `ignored`。请求体严格拒绝其它字段，尤其不得传入 session hash、响应正文或凭据。两个接口不分配并发槽、不写粘性，并且响应不包含凭据、代理认证、session hash 或上游响应内容。诊断复用请求信息足以判断的生产硬过滤；endpoint、transport、compact、media 等缺少请求上下文的能力以 `not_evaluated` 明示，不伪装成已通过。
 

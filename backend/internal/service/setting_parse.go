@@ -97,6 +97,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyFooterLinks:                               "[]",
 		SettingKeyFooterText:                                "",
 		SettingKeyHomeFeaturedModels:                        "[]",
+		SettingKeyCreativeModelSettings:                     "[]",
+		SettingKeyCreativeWorkerCount:                       strconv.Itoa(DefaultCreativeWorkerCount),
 		SettingKeyWeChatConnectEnabled:                      "false",
 		SettingKeyWeChatConnectAppID:                        "",
 		SettingKeyWeChatConnectAppSecret:                    "",
@@ -253,6 +255,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 页面功能开关默认开启，保持升级前已有功能的可见性。
 		SettingKeyTeamEnabled:        "true",
 		SettingKeyDataSharingEnabled: "true",
+		SettingKeyCreativeEnabled:    "true",
 
 		// 风控中心默认关闭，避免升级后未配置审计 Key 时影响现有请求。
 		SettingKeyRiskControlEnabled:          "false",
@@ -379,12 +382,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		FooterLinks:                            settings[SettingKeyFooterLinks],
 		FooterText:                             settings[SettingKeyFooterText],
 		HomeFeaturedModels:                     settings[SettingKeyHomeFeaturedModels],
+		CreativeModelSettings:                  parseCreativeModelSettings(settings[SettingKeyCreativeModelSettings]),
+		CreativeWorkerCount:                    parseCreativeWorkerCount(settings[SettingKeyCreativeWorkerCount]),
 		BalanceUnitName:                        balanceUnitName,
 		BalanceUnitSymbol:                      balanceUnitSymbol,
 		BalanceIconSVG:                         strings.TrimSpace(settings[SettingKeyBalanceIconSVG]),
 		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
 		TeamEnabled:                            settings[SettingKeyTeamEnabled] != "false",
 		DataSharingEnabled:                     settings[SettingKeyDataSharingEnabled] != "false",
+		CreativeEnabled:                        settings[SettingKeyCreativeEnabled] != "false",
 		RiskControlEnabled:                     settings[SettingKeyRiskControlEnabled] == "true",
 		CyberSessionBlockEnabled:               settings[SettingKeyCyberSessionBlockEnabled] == "true",
 		DefaultUserAPIKeyLimit:                 DefaultUserAPIKeyLimit,
@@ -1010,6 +1016,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	})
 
 	return result
+}
+
+// parseCreativeWorkerCount 解析创作台 worker 数量；缺失或脏值按默认并发回退。
+func parseCreativeWorkerCount(value string) int {
+	count, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || count <= 0 {
+		return DefaultCreativeWorkerCount
+	}
+	return count
 }
 
 func clampAffiliateRebateRate(value float64) float64 {

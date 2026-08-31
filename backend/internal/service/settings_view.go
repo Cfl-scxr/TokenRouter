@@ -180,12 +180,18 @@ type SystemSettings struct {
 	FooterLinks                 string // JSON array of footer link groups
 	FooterText                  string // Extra footer text (ICP number etc.)
 	HomeFeaturedModels          string // JSON array of model IDs featured on the home page
+	// CreativeModelSettings 是创作台允许使用的全局分组+模型+能力白名单 JSON。
+	CreativeModelSettings []CreativeModelSetting
+	// CreativeWorkerCount 是创作台任务 worker 数量，缺失时回退默认值。
+	CreativeWorkerCount int
 
 	DefaultConcurrency int
 	DefaultBalance     float64
 	// TeamEnabled 和 DataSharingEnabled 控制对应功能页面的入口与访问。
 	TeamEnabled        bool
 	DataSharingEnabled bool
+	// CreativeEnabled 控制创作台页面入口与 API 访问（进程配置 creative.enabled 仍为前置条件）。
+	CreativeEnabled bool
 	// RiskControlEnabled 控制风控中心入口和网关内容审计总开关。
 	RiskControlEnabled                   bool
 	CyberSessionBlockEnabled             bool
@@ -396,16 +402,18 @@ type PublicSettings struct {
 	TeamEnabled              bool
 	TeamSelfServiceEnabled   bool
 	DataSharingEnabled       bool // 暴露给前端用于控制数据共享页面入口
-	OIDCOAuthEnabled         bool
-	OIDCOAuthProviderName    string
-	GitHubOAuthEnabled       bool
-	GoogleOAuthEnabled       bool
-	GoogleOneTapEnabled      bool
-	GoogleOAuthClientID      string
-	Version                  string
-	BalanceUnitName          string
-	BalanceUnitSymbol        string
-	BalanceIconSVG           string
+	// CreativeEnabled 暴露给前端用于控制创作台页面入口与路由守卫。
+	CreativeEnabled       bool
+	OIDCOAuthEnabled      bool
+	OIDCOAuthProviderName string
+	GitHubOAuthEnabled    bool
+	GoogleOAuthEnabled    bool
+	GoogleOneTapEnabled   bool
+	GoogleOAuthClientID   string
+	Version               string
+	BalanceUnitName       string
+	BalanceUnitSymbol     string
+	BalanceIconSVG        string
 
 	BalanceLowNotifyEnabled   bool
 	AccountQuotaNotifyEnabled bool

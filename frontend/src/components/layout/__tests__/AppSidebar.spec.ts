@@ -78,7 +78,11 @@ describe('global header and sidebar hierarchy', () => {
     expect(componentSource).not.toContain('sidebar-header')
     expect(componentSource).not.toContain('sidebar-brand')
     expect(layoutSource).toContain('<AppHeader />')
-    expect(layoutSource.indexOf('<AppHeader />')).toBeLessThan(layoutSource.indexOf('<AppSidebar />'))
+    // AppLayout 改造后侧栏按 hideSidebar 条件渲染，这里只要求 header 出现在侧栏组件之前。
+    const headerIndex = layoutSource.indexOf('<AppHeader />')
+    const sidebarIndex = layoutSource.indexOf('<AppSidebar')
+    expect(headerIndex).toBeGreaterThanOrEqual(0)
+    expect(sidebarIndex).toBeGreaterThan(headerIndex)
   })
 
   it('starts the mobile overlay below the global header', () => {

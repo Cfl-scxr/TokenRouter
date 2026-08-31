@@ -47,6 +47,10 @@
 
 时区的优先级是标准 `TZ`、兼容 `TIMEZONE`、配置文件、默认 `Asia/Shanghai`。`TZ` 非空时必须显式覆盖 `TIMEZONE`，使容器运行时、应用本地日统计和 PostgreSQL 连接时区使用同一部署者选择；无效 IANA 名称仍在启动校验中失败。
 
+创作台（Creative Studio）属于启动时进程配置 `creative`：功能与队列开关、临时数据 TTL（`transient_ttl_seconds`，默认 1800 秒）、上传与 prompt 限制（`max_asset_bytes` 默认 32 MiB、`max_total_input_bytes` 默认 64 MiB 且不得小于单文件上限、`max_prompt_chars` 默认 8000）、上游执行参数（`execute_timeout_seconds`、`max_execute_attempts`）和 `creative:queue:*` 队列键/TTL 都在启动校验，修改后需要重启。创作台每次任务固定生成一张图片，预占价格按所选尺寸单价计算。与 `batch_image` 不同，`enabled` 与 `queue_enabled` 默认开启，但临时存储与队列依赖 Redis，Redis 不可用时任务创建 fail-close。完整键清单见 `deploy/config.example.yaml` 和[创作台](../domains/creative_studio.md)。
+
+创作台的 worker 数量不属于进程配置，而是数据库运行时设置 `creative_worker_count`：默认 128，仅允许大于 0 的整数，不设置硬上限；缺失或历史脏值按 128 处理。管理员在“功能特性 - 创作台”保存后，本实例立即扩缩 worker 池，缩容采用优雅排空，不中断正在执行的上游请求；该设置无需迁移，也不通过公开设置接口暴露。
+
 加载完成后会做字符串规范化、枚举回退、派生默认、文件读取和完整 `Validate`。无效安全 header、URL、数值范围、模式组合或必要 secret 会让启动失败；不应等到某个请求首次使用时才发现。自动生成的 TOTP key 只适合开发，`EncryptionKeyConfigured=false` 会阻止后台把 TOTP 当成生产可用配置。
 
 环境变量优先于 YAML，因此排查“文件修改不生效”时先检查容器环境。不得在日志、错误或管理响应中输出数据库密码、JWT/TOTP secret、OAuth secret、对象存储 secret 或账号凭据。
@@ -72,6 +76,8 @@ setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` �
 `google_one_tap_enabled` 是独立于 `google_oauth_enabled` 的数据库运行时开关，默认关闭。部署者先为现有 Web 类型 Google OAuth Client ID 登记每个前端 Authorized JavaScript origin，再显式开启；生产 Origin 必须使用 HTTPS，本地开发只允许 localhost/loopback HTTP。公开设置只有在 One Tap 开关和完整 Google OAuth 配置同时有效时才返回 `google_one_tap_enabled=true` 及非敏感 `google_oauth_client_id`，任一条件不满足时按关闭并返回空 Client ID；Client Secret 始终只留在服务端和受掩码保护的管理设置中。首页与登录页共用这组公开设置，旧 HTML 注入缓存缺失新字段时按关闭处理。
 
 `home_featured_models` 保存首页「已支持的 AI 模型」板块的精选模型 ID 列表（JSON 数组，最多 12 个，按数组顺序展示），在管理端“系统设置 - 通用设置”的「首页模型展示」卡片维护，选项来自公开模型广场分组。它通过公开设置接口和 SSR 注入同时下发，首页按 ID 在市场分组中解析模型；列表为空或全部解析不到时，首页回退到按服务商类别聚合的默认卡片。该设置可热更新、不需要迁移（读路径容忍缺键按空列表处理）；管理更新请求省略该字段时保留当前值，写入前会去掉空白项、去重并拒绝超长列表。
+
+`creative_model_settings` 保存创作台允许使用的全局生图模型与能力白名单（JSON 数组），每项为 `group_id`、`model` 和 `operations`，通用能力值仅允许 `generate`、`edit`、`inpaint`，实际平台交集为 OpenAI 三项、Gemini/Grok 的 `generate`/`edit`。默认值为 `[]`，空列表表示创作台没有任何可用生图模型；不需要数据库迁移。管理 PUT 省略字段时保留旧值，显式发送 `[]` 时清空；保存校验正整数分组 ID、非空模型名、至少一项能力和分组+模型唯一性，并按可解析的实际分组平台移除 Gemini 的 `inpaint`，移除后无能力的条目删除；无法解析的历史分组暂时保留。读取损坏 JSON 或读取失败按空列表处理并记录日志，设置不建立外键，因此失效分组/账号配置会保留并在恢复后重新生效。
 
 `usage_ranking_enabled`、`usage_ranking_sort_by`、`usage_ranking_show_total_tokens`、`usage_ranking_show_requests`、`usage_ranking_show_actual_cost` 与既有 `usage_ranking_limit` 共同控制用户侧用量排行。排行行的 `user_id` 表示付款主体；团队 Key 的请求按 `billing_user_id` 归到团队 Owner，Usage 明细中的 `user_id` 仍表示实际行为成员。它们保存在 `settings` 表，不需要迁移或重启；排行请求在查询前一次读取这些键，因此保存后立即作用于本实例，跨实例通过同一数据库读取最终一致。缺失新键按升级兼容默认：排行开启、按 `total_tokens` 排序、三项均显示、名次上限为 20。排序值只允许 `total_tokens`、`requests` 和 `actual_cost`；所选指标必须保持可见，其它字段可独立关闭。
 

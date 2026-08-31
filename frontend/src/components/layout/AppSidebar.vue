@@ -253,6 +253,27 @@ const ChartIcon = {
     )
 }
 
+// 创作台入口图标：画笔 + 星形火花，沿用文件内手写 SVG 风格。
+const CreativeIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42'
+        }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M15.75 12c0 .18-.013.357-.037.53l-1.22 7.32a.375.375 0 01-.37.315H9.877a.375.375 0 01-.37-.315l-1.22-7.32A2.25 2.25 0 1015.75 12z'
+        })
+      ]
+    )
+}
+
 // 排行入口使用趋势图标，与使用记录的柱状图明确区分。
 const RankingIcon = {
   render: () =>
@@ -558,6 +579,8 @@ const ChevronDownIcon = {
 
 // 批量图片入口还需要用户 API Key 和分组权限同时满足。
 const flagBatchImageAccess = () => canUseBatchImage.value
+// 创作台入口由功能开关控制（默认开），可用模型以页面内目录为准。
+const flagCreativeStudioAccess = () => appStore.cachedPublicSettings?.creative_enabled !== false
 const flagTeamAccess = () => appStore.cachedPublicSettings?.team_enabled !== false
 const flagDataSharingAccess = () => appStore.cachedPublicSettings?.data_sharing_enabled !== false
 const flagUsageRankingAccess = () => appStore.cachedPublicSettings?.usage_ranking_enabled !== false
@@ -571,6 +594,7 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/team', label: t('nav.team'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagTeamAccess },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
+    { path: '/creative', label: t('nav.creative'), icon: CreativeIcon, hideInSimpleMode: true, featureFlag: flagCreativeStudioAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/data-sharing', label: t('nav.dataSharing'), icon: DatabaseIcon, hideInSimpleMode: true, featureFlag: flagDataSharingAccess },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
@@ -626,6 +650,7 @@ const personalNavItems = computed((): NavItem[] => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/team', label: t('nav.team'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagTeamAccess },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
+    { path: '/creative', label: t('nav.creative'), icon: CreativeIcon, hideInSimpleMode: true, featureFlag: flagCreativeStudioAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/data-sharing', label: t('nav.dataSharing'), icon: DatabaseIcon, hideInSimpleMode: true, featureFlag: flagDataSharingAccess },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },

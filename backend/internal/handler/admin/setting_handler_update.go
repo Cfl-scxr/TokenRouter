@@ -156,35 +156,37 @@ type UpdateSettingsRequest struct {
 	GoogleOAuthFrontendRedirectURL string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
-	SiteName                    string                 `json:"site_name"`
-	SiteLogo                    string                 `json:"site_logo"`
-	SiteSubtitle                string                 `json:"site_subtitle"`
-	SiteNameZh                  string                 `json:"site_name_zh"`
-	SiteNameEn                  string                 `json:"site_name_en"`
-	SiteTitleZh                 string                 `json:"site_title_zh"`
-	SiteTitleEn                 string                 `json:"site_title_en"`
-	SiteSubtitleZh              string                 `json:"site_subtitle_zh"`
-	SiteSubtitleEn              string                 `json:"site_subtitle_en"`
-	APIBaseURL                  string                 `json:"api_base_url"`
-	ContactInfo                 string                 `json:"contact_info"`
-	DocURL                      string                 `json:"doc_url"`
-	HomeContent                 string                 `json:"home_content"`
-	HideCcsImportButton         bool                   `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                  `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string                `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                    `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                  `json:"table_page_size_options"`
-	UsageRankingLimit           int                    `json:"usage_ranking_limit"`
-	UsageRankingEnabled         *bool                  `json:"usage_ranking_enabled"`
-	UsageRankingSortBy          *string                `json:"usage_ranking_sort_by"`
-	UsageRankingShowTotalTokens *bool                  `json:"usage_ranking_show_total_tokens"`
-	UsageRankingShowRequests    *bool                  `json:"usage_ranking_show_requests"`
-	UsageRankingShowActualCost  *bool                  `json:"usage_ranking_show_actual_cost"`
-	CustomMenuItems             *[]dto.CustomMenuItem  `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint  `json:"custom_endpoints"`
-	FooterLinks                 *[]dto.FooterLinkGroup `json:"footer_links"`
-	FooterText                  *string                `json:"footer_text"`
-	HomeFeaturedModels          *[]string              `json:"home_featured_models"`
+	SiteName                    string                          `json:"site_name"`
+	SiteLogo                    string                          `json:"site_logo"`
+	SiteSubtitle                string                          `json:"site_subtitle"`
+	SiteNameZh                  string                          `json:"site_name_zh"`
+	SiteNameEn                  string                          `json:"site_name_en"`
+	SiteTitleZh                 string                          `json:"site_title_zh"`
+	SiteTitleEn                 string                          `json:"site_title_en"`
+	SiteSubtitleZh              string                          `json:"site_subtitle_zh"`
+	SiteSubtitleEn              string                          `json:"site_subtitle_en"`
+	APIBaseURL                  string                          `json:"api_base_url"`
+	ContactInfo                 string                          `json:"contact_info"`
+	DocURL                      string                          `json:"doc_url"`
+	HomeContent                 string                          `json:"home_content"`
+	HideCcsImportButton         bool                            `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool                           `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string                         `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                             `json:"table_default_page_size"`
+	TablePageSizeOptions        []int                           `json:"table_page_size_options"`
+	UsageRankingLimit           int                             `json:"usage_ranking_limit"`
+	UsageRankingEnabled         *bool                           `json:"usage_ranking_enabled"`
+	UsageRankingSortBy          *string                         `json:"usage_ranking_sort_by"`
+	UsageRankingShowTotalTokens *bool                           `json:"usage_ranking_show_total_tokens"`
+	UsageRankingShowRequests    *bool                           `json:"usage_ranking_show_requests"`
+	UsageRankingShowActualCost  *bool                           `json:"usage_ranking_show_actual_cost"`
+	CustomMenuItems             *[]dto.CustomMenuItem           `json:"custom_menu_items"`
+	CustomEndpoints             *[]dto.CustomEndpoint           `json:"custom_endpoints"`
+	FooterLinks                 *[]dto.FooterLinkGroup          `json:"footer_links"`
+	FooterText                  *string                         `json:"footer_text"`
+	HomeFeaturedModels          *[]string                       `json:"home_featured_models"`
+	CreativeModelSettings       *[]service.CreativeModelSetting `json:"creative_model_settings"`
+	CreativeWorkerCount         *int                            `json:"creative_worker_count"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -355,9 +357,10 @@ type UpdateSettingsRequest struct {
 
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
-	// 团队和数据共享页面功能开关
+	// 团队、数据共享和创作台页面功能开关
 	TeamEnabled        *bool `json:"team_enabled"`
 	DataSharingEnabled *bool `json:"data_sharing_enabled"`
+	CreativeEnabled    *bool `json:"creative_enabled"`
 
 	// cyber 会话屏蔽开关与 TTL
 	CyberSessionBlockEnabled    *bool `json:"cyber_session_block_enabled"`
@@ -490,6 +493,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
+	}
+	// 管理端保存白名单时按实际分组平台收敛能力，清理已下线的 Gemini inpaint。
+	if req.CreativeModelSettings != nil {
+		if sanitizer, ok := h.creativeModelReader.(interface {
+			NormalizeCreativeModelSettingsForSave(context.Context, []service.CreativeModelSetting) ([]service.CreativeModelSetting, error)
+		}); ok {
+			normalized, normalizeErr := sanitizer.NormalizeCreativeModelSettingsForSave(c.Request.Context(), *req.CreativeModelSettings)
+			if normalizeErr != nil {
+				response.BadRequest(c, "Invalid creative model settings: "+normalizeErr.Error())
+				return
+			}
+			req.CreativeModelSettings = &normalized
+		}
 	}
 	auditReq := settingsAuditRequest(req)
 	omitted := omittedSettingKeys(sentFields)
@@ -1672,6 +1688,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
 		return
 	}
+	if req.CreativeWorkerCount != nil && *req.CreativeWorkerCount <= 0 {
+		response.BadRequest(c, "creative_worker_count must be > 0")
+		return
+	}
 
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
@@ -1842,6 +1862,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.DataSharingEnabled
 			}
 			return previousSettings.DataSharingEnabled
+		}(),
+		CreativeEnabled: func() bool {
+			if req.CreativeEnabled != nil {
+				return *req.CreativeEnabled
+			}
+			return previousSettings.CreativeEnabled
+		}(),
+		CreativeModelSettings: func() []service.CreativeModelSetting {
+			if req.CreativeModelSettings != nil {
+				return *req.CreativeModelSettings
+			}
+			return previousSettings.CreativeModelSettings
+		}(),
+		CreativeWorkerCount: func() int {
+			if req.CreativeWorkerCount != nil {
+				return *req.CreativeWorkerCount
+			}
+			return previousSettings.CreativeWorkerCount
 		}(),
 		RiskControlEnabled: func() bool {
 			if req.RiskControlEnabled != nil {
@@ -2401,6 +2439,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultBalance:                                   updatedSettings.DefaultBalance,
 		TeamEnabled:                                      updatedSettings.TeamEnabled,
 		DataSharingEnabled:                               updatedSettings.DataSharingEnabled,
+		CreativeEnabled:                                  updatedSettings.CreativeEnabled,
+		CreativeModelSettings:                            updatedSettings.CreativeModelSettings,
+		CreativeWorkerCount:                              updatedSettings.CreativeWorkerCount,
 		RiskControlEnabled:                               updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:                         updatedSettings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:                      updatedSettings.CyberSessionBlockTTLSeconds,

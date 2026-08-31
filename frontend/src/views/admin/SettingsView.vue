@@ -7481,6 +7481,169 @@
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.creative.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.creative.description") }}
+              </p>
+            </div>
+            <div class="p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.features.creative.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.creative.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.creative_enabled" />
+              </div>
+
+              <div class="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white" for="creative-worker-count">
+                    {{ t("admin.settings.features.creative.workerCount") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.creative.workerCountHint") }}
+                  </p>
+                </div>
+                <input
+                  id="creative-worker-count"
+                  v-model.number="form.creative_worker_count"
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  class="input w-32"
+                />
+              </div>
+
+              <!-- 当前 worker 使用情况：进度条 + 忙碌/总数，数据来自运行时状态轮询。 -->
+              <div class="mt-4">
+                <p class="mb-1.5 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.features.creative.workerUsage") }}
+                </p>
+                <div class="flex items-center gap-3">
+                  <div class="h-2.5 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700">
+                    <div
+                      class="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                      :style="{ width: `${creativeWorkerUsagePercent}%` }"
+                    ></div>
+                  </div>
+                  <span class="shrink-0 text-sm tabular-nums text-gray-900 dark:text-white">
+                    {{ creativeWorkerUsageText }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="mt-6 border-t border-gray-100 pt-5 dark:border-dark-700">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.features.creative.modelSettings.title") }}
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.features.creative.modelSettings.description") }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-primary inline-flex items-center gap-1.5"
+                    :disabled="creativeModelCandidatesLoading || !creativeModelCandidates.some((candidate) => !form.creative_model_settings.some((item) => creativeModelSettingKey(item) === creativeModelSettingKey(candidate)))"
+                    @click="addCreativeModelSetting"
+                  >
+                    <Icon name="plus" size="sm" />
+                    {{ t("admin.settings.features.creative.modelSettings.add") }}
+                  </button>
+                </div>
+
+                <p v-if="creativeModelCandidatesLoading" class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.features.creative.modelSettings.loading") }}
+                </p>
+                <p v-else-if="creativeModelCandidatesError" class="mt-4 text-sm text-amber-600 dark:text-amber-400">
+                  {{ t("admin.settings.features.creative.modelSettings.loadError") }}
+                </p>
+
+                <!-- 模型能力列表：列头与行共用同一网格分栏，模型选择、能力开关、删除操作对齐，避免行内松散留白。 -->
+                <div
+                  v-if="form.creative_model_settings.length > 0"
+                  class="mt-4 overflow-hidden rounded-xl border border-gray-200 dark:border-dark-600"
+                >
+                  <div
+                    class="hidden items-center gap-4 border-b border-gray-100 bg-gray-50 px-4 py-2 text-xs font-medium text-gray-500 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto] dark:border-dark-700 dark:bg-dark-800/60 dark:text-dark-300"
+                  >
+                    <span>{{ t("admin.settings.features.creative.modelSettings.modelColumn") }}</span>
+                    <span>{{ t("admin.settings.features.creative.modelSettings.operationsColumn") }}</span>
+                    <span class="w-9" aria-hidden="true"></span>
+                  </div>
+                  <div class="divide-y divide-gray-100 dark:divide-dark-700">
+                    <div
+                      v-for="(item, index) in form.creative_model_settings"
+                      :key="`${creativeModelSettingKey(item)}-${index}`"
+                      class="grid grid-cols-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-gray-50 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-4 dark:hover:bg-dark-800/40"
+                    >
+                      <div class="min-w-0">
+                        <Select
+                          :model-value="creativeModelSettingKey(item)"
+                          :options="creativeModelOptionsForRow(index)"
+                          :placeholder="t('admin.settings.features.creative.modelSettings.selectModel')"
+                          :searchable="'auto'"
+                          class="w-full sm:max-w-xs"
+                          @change="onCreativeModelSelected(index, $event)"
+                        />
+                        <p v-if="!creativeCandidateForSetting(item)" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                          {{ t("admin.settings.features.creative.modelSettings.unavailableHint") }}
+                        </p>
+                      </div>
+                      <!-- 能力开关：胶囊按钮替代原生复选框，选中态带对勾，禁用态沿用“至少保留一项能力”等约束。 -->
+                      <div class="flex flex-wrap items-center gap-2">
+                        <button
+                          v-for="operation in creativeOperationChoices"
+                          :key="operation"
+                          type="button"
+                          class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors"
+                          :class="[
+                            item.operations.includes(operation)
+                              ? 'border-primary-500/60 bg-primary-50 text-primary-700 dark:border-primary-500/50 dark:bg-primary-500/10 dark:text-primary-300'
+                              : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:border-dark-600 dark:text-dark-300 dark:hover:border-dark-400 dark:hover:text-dark-100',
+                            creativeOperationCheckboxDisabled(index, operation) && 'cursor-not-allowed opacity-50',
+                          ]"
+                          :disabled="creativeOperationCheckboxDisabled(index, operation)"
+                          :aria-pressed="item.operations.includes(operation)"
+                          @click="toggleCreativeOperation(index, operation, !item.operations.includes(operation))"
+                        >
+                          <Icon v-if="item.operations.includes(operation)" name="check" size="xs" />
+                          {{ t(`admin.settings.features.creative.modelSettings.operations.${operation}`) }}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn-icon justify-self-start text-gray-500 hover:text-red-600 sm:justify-self-end dark:text-dark-300 dark:hover:text-red-400"
+                        :aria-label="t('admin.settings.features.creative.modelSettings.remove')"
+                        :title="t('admin.settings.features.creative.modelSettings.remove')"
+                        @click="removeCreativeModelSetting(index)"
+                      >
+                        <Icon name="trash" size="sm" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <p
+                  v-else
+                  class="mt-4 flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-200 px-4 py-6 text-sm text-gray-500 dark:border-dark-600 dark:text-dark-300"
+                >
+                  <Icon name="infoCircle" size="sm" />
+                  {{ t("admin.settings.features.creative.modelSettings.empty") }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
                 {{ t("admin.settings.features.affiliate.title") }}
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -8807,7 +8970,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick, watch } from "vue";
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import { adminAPI } from "@/api";
@@ -8842,7 +9005,11 @@ import type {
   UserPromptReplacementRule,
   UserPromptReplacementType,
   UsageRankingSortBy,
+  CreativeModelCandidate,
+  CreativeModelSetting,
+  CreativeWorkerStatus,
 } from "@/api/admin/settings";
+import type { CreativeOperation } from "@/api/creative";
 import type { LoginAgreementDocument, MarketplaceGroup, NotifyEmailEntry, Proxy } from "@/types";
 import type { ProviderInstance, SubscriptionPlan } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
@@ -9753,6 +9920,9 @@ const form = reactive<SettingsForm>({
   // 页面功能开关默认开启，兼容升级前行为。
   team_enabled: true,
   data_sharing_enabled: true,
+  creative_enabled: true,
+  creative_model_settings: [] as CreativeModelSetting[],
+  creative_worker_count: 128,
   risk_control_enabled: false,
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
@@ -9769,6 +9939,230 @@ const form = reactive<SettingsForm>({
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   allow_user_view_error_requests: false,
 });
+
+const creativeOperationChoices: CreativeOperation[] = [
+  "generate",
+  "edit",
+  "inpaint",
+];
+const creativeModelCandidates = ref<CreativeModelCandidate[]>([]);
+const creativeModelCandidatesLoading = ref(false);
+const creativeModelCandidatesError = ref(false);
+
+// 创作台 worker 使用情况：进入功能标签页时轮询运行时状态，离开时停止，避免后台空转。
+const creativeWorkerStatus = ref<CreativeWorkerStatus | null>(null);
+let creativeWorkerStatusTimer: number | null = null;
+
+const creativeWorkerUsageTotal = computed(() => {
+  const status = creativeWorkerStatus.value;
+  if (status?.running && status.worker_count > 0) {
+    return status.worker_count;
+  }
+  return Math.max(0, Math.floor(Number(form.creative_worker_count)) || 0);
+});
+const creativeWorkerUsageBusy = computed(() => {
+  const status = creativeWorkerStatus.value;
+  if (!status?.running) {
+    return 0;
+  }
+  return Math.min(Math.max(status.busy_workers, 0), creativeWorkerUsageTotal.value);
+});
+const creativeWorkerUsagePercent = computed(() => {
+  const total = creativeWorkerUsageTotal.value;
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.min(Math.round((creativeWorkerUsageBusy.value / total) * 100), 100);
+});
+const creativeWorkerUsageText = computed(
+  () => `${creativeWorkerUsageBusy.value}/${creativeWorkerUsageTotal.value}`,
+);
+
+async function loadCreativeWorkerStatus() {
+  try {
+    creativeWorkerStatus.value = await adminAPI.settings.getCreativeWorkerStatus();
+  } catch {
+    // 轮询失败静默处理：保留上一次成功快照，不打断设置页操作。
+  }
+}
+
+function startCreativeWorkerStatusPolling() {
+  if (creativeWorkerStatusTimer !== null) {
+    return;
+  }
+  void loadCreativeWorkerStatus();
+  creativeWorkerStatusTimer = window.setInterval(() => {
+    void loadCreativeWorkerStatus();
+  }, 5000);
+}
+
+function stopCreativeWorkerStatusPolling() {
+  if (creativeWorkerStatusTimer === null) {
+    return;
+  }
+  window.clearInterval(creativeWorkerStatusTimer);
+  creativeWorkerStatusTimer = null;
+}
+
+watch(
+  activeTab,
+  (tab) => {
+    if (tab === "features") {
+      startCreativeWorkerStatusPolling();
+    } else {
+      stopCreativeWorkerStatusPolling();
+    }
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  stopCreativeWorkerStatusPolling();
+});
+
+function creativeModelSettingKey(item: Pick<CreativeModelSetting, "group_id" | "model">): string {
+  return `${item.group_id}::${item.model}`;
+}
+
+const creativeModelCandidateOptions = computed(() => {
+  const options: Array<{ value: string; label: string; kind?: string; disabled?: boolean; candidate?: CreativeModelCandidate }> = [];
+  const groups = new Map<number, CreativeModelCandidate[]>();
+  for (const candidate of creativeModelCandidates.value) {
+    const items = groups.get(candidate.group_id) ?? [];
+    items.push(candidate);
+    groups.set(candidate.group_id, items);
+  }
+  for (const [groupID, candidates] of groups) {
+    const groupName = candidates[0]?.group_name || String(groupID);
+    options.push({ value: `__creative_group_${groupID}`, label: groupName, kind: "group", disabled: true });
+    for (const candidate of candidates) {
+      options.push({
+        value: creativeModelSettingKey(candidate),
+        label: `${candidate.model} / ${candidate.platform}`,
+        candidate,
+      });
+    }
+  }
+  return options;
+});
+
+function creativeModelOptionsForRow(index: number) {
+  const current = form.creative_model_settings[index];
+  const used = new Set(
+    form.creative_model_settings
+      .filter((_, itemIndex) => itemIndex !== index)
+      .map((item) => creativeModelSettingKey(item)),
+  );
+  const currentKey = current ? creativeModelSettingKey(current) : "";
+  const options = creativeModelCandidateOptions.value.filter(
+    (option) => option.kind === "group" || option.value === currentKey || !used.has(option.value),
+  );
+  if (current && !creativeModelCandidates.value.some((candidate) => creativeModelSettingKey(candidate) === currentKey)) {
+    options.unshift({
+      value: currentKey,
+      label: `${current.group_id} / ${current.model} (${t("admin.settings.features.creative.modelSettings.unavailable")})`,
+      kind: "stale",
+      disabled: true,
+    });
+  }
+  return options;
+}
+
+function creativeCandidateForSetting(item: CreativeModelSetting): CreativeModelCandidate | undefined {
+  const key = creativeModelSettingKey(item);
+  return creativeModelCandidates.value.find((candidate) => creativeModelSettingKey(candidate) === key);
+}
+
+function creativeOperationSupported(index: number, operation: CreativeOperation): boolean {
+  const item = form.creative_model_settings[index];
+  if (!item) return false;
+  return creativeCandidateForSetting(item)?.operations.includes(operation) ?? false;
+}
+
+function creativeOperationCheckboxDisabled(index: number, operation: CreativeOperation): boolean {
+  const item = form.creative_model_settings[index];
+  if (!item || !creativeOperationSupported(index, operation)) return true;
+  return item.operations.length <= 1 && item.operations.includes(operation);
+}
+
+function onCreativeModelSelected(index: number, value: string | number | boolean | null) {
+  if (typeof value !== "string") return;
+  const candidate = creativeModelCandidates.value.find(
+    (item) => creativeModelSettingKey(item) === value,
+  );
+  if (!candidate) return;
+  const row = form.creative_model_settings[index];
+  if (!row) return;
+  row.group_id = candidate.group_id;
+  row.model = candidate.model;
+  row.operations = [...candidate.operations];
+}
+
+function addCreativeModelSetting() {
+  const candidate = creativeModelCandidates.value.find(
+    (item) => !form.creative_model_settings.some((setting) => creativeModelSettingKey(setting) === creativeModelSettingKey(item)),
+  );
+  if (!candidate) return;
+  form.creative_model_settings.push({
+    group_id: candidate.group_id,
+    model: candidate.model,
+    operations: [...candidate.operations],
+  });
+}
+
+function removeCreativeModelSetting(index: number) {
+  form.creative_model_settings.splice(index, 1);
+}
+
+function toggleCreativeOperation(index: number, operation: CreativeOperation, checked: boolean) {
+  const item = form.creative_model_settings[index];
+  if (!item || !creativeOperationSupported(index, operation)) return;
+  const next = new Set(item.operations);
+  if (checked) next.add(operation);
+  else next.delete(operation);
+  item.operations = creativeOperationChoices.filter((choice) => next.has(choice));
+}
+
+function normalizeCreativeModelSettingsForSave(): CreativeModelSetting[] | null {
+  const seen = new Set<string>();
+  const normalized: CreativeModelSetting[] = [];
+  for (const item of form.creative_model_settings) {
+    const groupID = Number(item.group_id);
+    const model = String(item.model || "").trim();
+    const candidate = creativeModelCandidates.value.find(
+      (entry) => creativeModelSettingKey(entry) === creativeModelSettingKey({ group_id: groupID, model }),
+    );
+    // 候选已知时只提交平台实际支持的能力，避免旧 Gemini inpaint 被重新写回。
+    const operations = creativeOperationChoices.filter(
+      (operation) => item.operations.includes(operation) && (candidate?.operations.includes(operation) ?? true),
+    );
+    if (!Number.isSafeInteger(groupID) || groupID <= 0 || !model) {
+      return null;
+    }
+    if (operations.length === 0) {
+      // 已知候选但没有任何可用能力时删除该条目；未知历史分组仍按 fail-closed 保留原值。
+      if (candidate) continue;
+      return null;
+    }
+    const key = creativeModelSettingKey({ group_id: groupID, model });
+    if (seen.has(key)) return null;
+    seen.add(key);
+    normalized.push({ group_id: groupID, model, operations });
+  }
+  return normalized;
+}
+
+async function loadCreativeModelCandidates() {
+  creativeModelCandidatesLoading.value = true;
+  creativeModelCandidatesError.value = false;
+  try {
+    creativeModelCandidates.value = await adminAPI.settings.getCreativeModelCandidates();
+  } catch {
+    creativeModelCandidatesError.value = true;
+  } finally {
+    creativeModelCandidatesLoading.value = false;
+  }
+}
 
 // 排名依据必须始终显示，避免用户无法解释排行名次。
 function ensureUsageRankingSortMetricVisible() {
@@ -11101,6 +11495,7 @@ async function loadSettings() {
 
     // Load web search emulation config separately
     await loadWebSearchConfig();
+    await loadCreativeModelCandidates();
   } catch (error: unknown) {
     loadFailed.value = true;
     appStore.showError(
@@ -11180,6 +11575,13 @@ function findDuplicateDefaultSubscription(
 async function saveSettings() {
   saving.value = true;
   try {
+    const normalizedCreativeWorkerCount = Math.floor(Number(form.creative_worker_count));
+    if (!Number.isSafeInteger(normalizedCreativeWorkerCount) || normalizedCreativeWorkerCount <= 0) {
+      appStore.showError(t("admin.settings.features.creative.workerCountInvalid"));
+      return;
+    }
+    form.creative_worker_count = normalizedCreativeWorkerCount;
+
     const rawDefaultUserAPIKeyLimit = String(
       form.default_user_api_key_limit,
     ).trim();
@@ -11276,6 +11678,13 @@ async function saveSettings() {
         ),
       ),
     );
+    const normalizedCreativeModelSettings = normalizeCreativeModelSettingsForSave();
+    if (!normalizedCreativeModelSettings) {
+      appStore.showError(
+        t("admin.settings.features.creative.modelSettings.validationError"),
+      );
+      return;
+    }
     if (
       form.openai_account_quota_auto_pause.default_threshold_5h < 0 ||
       form.openai_account_quota_auto_pause.default_threshold_5h > 1 ||
@@ -11639,6 +12048,9 @@ async function saveSettings() {
       // 页面功能开关
       team_enabled: form.team_enabled,
       data_sharing_enabled: form.data_sharing_enabled,
+      creative_enabled: form.creative_enabled,
+      creative_model_settings: normalizedCreativeModelSettings,
+      creative_worker_count: normalizedCreativeWorkerCount,
       risk_control_enabled: form.risk_control_enabled,
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds: Math.max(

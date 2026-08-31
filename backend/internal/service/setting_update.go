@@ -407,6 +407,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyFooterLinks] = settings.FooterLinks
 	updates[SettingKeyFooterText] = strings.TrimSpace(settings.FooterText)
 	updates[SettingKeyHomeFeaturedModels] = settings.HomeFeaturedModels
+	creativeModelSettingsJSON, normalizedCreativeModelSettings, err := marshalCreativeModelSettings(settings.CreativeModelSettings)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CREATIVE_MODEL_SETTINGS", err.Error())
+	}
+	settings.CreativeModelSettings = normalizedCreativeModelSettings
+	updates[SettingKeyCreativeModelSettings] = creativeModelSettingsJSON
+	if settings.CreativeWorkerCount <= 0 {
+		settings.CreativeWorkerCount = DefaultCreativeWorkerCount
+	}
+	updates[SettingKeyCreativeWorkerCount] = strconv.Itoa(settings.CreativeWorkerCount)
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -555,9 +565,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
 
-	// 页面功能开关：控制团队和数据共享相关页面的入口与访问。
+	// 页面功能开关：控制团队、数据共享和创作台相关页面的入口与访问。
 	updates[SettingKeyTeamEnabled] = strconv.FormatBool(settings.TeamEnabled)
 	updates[SettingKeyDataSharingEnabled] = strconv.FormatBool(settings.DataSharingEnabled)
+	updates[SettingKeyCreativeEnabled] = strconv.FormatBool(settings.CreativeEnabled)
 
 	// 风控中心总开关：控制菜单入口和网关内容审计是否执行。
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
@@ -890,6 +901,9 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	})
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
+	}
+	if s.creativeWorkerCountCallback != nil {
+		s.creativeWorkerCountCallback(settings.CreativeWorkerCount)
 	}
 }
 

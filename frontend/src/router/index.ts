@@ -252,6 +252,21 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/creative',
+    name: 'CreativeStudio',
+    component: () => import('@/views/user/CreativeStudioView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresCreative: true,
+      title: 'Creative',
+      titleKey: 'creative.title',
+      descriptionKey: 'creative.description',
+      hidePageHeading: true,
+      hideSidebar: true
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),
@@ -891,6 +906,7 @@ router.beforeEach(async (to, _from, next) => {
     || to.meta.requiresTeam
     || to.meta.requiresDataSharing
     || to.meta.requiresUsageRanking
+    || to.meta.requiresCreative
   if (requiresPublicFeature && !appStore.publicSettingsLoaded) {
     try {
       await appStore.fetchPublicSettings()
@@ -946,6 +962,15 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
+  if (
+    to.meta.requiresCreative &&
+    appStore.publicSettingsLoaded &&
+    appStore.cachedPublicSettings?.creative_enabled === false
+  ) {
+    next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+    return
+  }
+
   if (to.meta.requiresAffiliate) {
     const affiliateEnabled = appStore.cachedPublicSettings?.affiliate_enabled === true
     if (!affiliateEnabled) {
@@ -963,7 +988,8 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/affiliates',
       '/subscriptions',
       '/redeem',
-      '/affiliate'
+      '/affiliate',
+      '/creative'
     ]
 
     if (restrictedPaths.some((path) => to.path.startsWith(path))) {
