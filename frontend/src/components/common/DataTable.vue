@@ -105,7 +105,7 @@
           <th
             v-if="selectable"
             scope="col"
-            class="sticky-header-cell w-11 min-w-11 px-3 py-3 text-center"
+            class="sticky-header-cell w-11 min-w-11 px-3 py-2 text-center"
           >
             <input
               type="checkbox"
@@ -123,7 +123,7 @@
             scope="col"
             :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
-              'sticky-header-cell py-3 text-left text-xs font-medium tracking-wider text-gray-500 dark:text-dark-400',
+              'sticky-header-cell py-2 text-left text-xs font-medium tracking-wider text-gray-500 dark:text-dark-400',
               getAdaptivePaddingClass(),
               { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
               getStickyColumnClass(column, index),
@@ -268,12 +268,12 @@ import { useVirtualizer, observeElementRect as observeElementRectDefault } from 
 import { useI18n } from 'vue-i18n'
 import type { Column } from './types'
 import Icon from '@/components/icons/Icon.vue'
+import { TABLE_DESKTOP_MEDIA_QUERY } from '@/constants/layout'
 
 const { t } = useI18n()
 
-const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
-  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+  typeof window === 'undefined' ? true : window.matchMedia(TABLE_DESKTOP_MEDIA_QUERY).matches
 )
 
 const emit = defineEmits<{
@@ -406,7 +406,7 @@ const attachDesktopTableTracking = () => {
 
 onMounted(() => {
   if (typeof window !== 'undefined') {
-    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    desktopViewportMediaQuery = window.matchMedia(TABLE_DESKTOP_MEDIA_QUERY)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
     desktopViewportListener = (event: MediaQueryListEvent) => {
       isDesktopViewport.value = event.matches

@@ -536,6 +536,7 @@ import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
+import { TABLE_DESKTOP_MEDIA_QUERY } from '@/constants/layout'
 import type {
   Account,
   AccountPlatform,
@@ -726,9 +727,8 @@ const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
 
-const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
-  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+  typeof window === 'undefined' ? true : window.matchMedia(TABLE_DESKTOP_MEDIA_QUERY).matches
 )
 let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
@@ -2989,7 +2989,7 @@ const handleClickOutside = (event: MouseEvent) => {
 
 onMounted(async () => {
   if (typeof window !== 'undefined') {
-    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    desktopViewportMediaQuery = window.matchMedia(TABLE_DESKTOP_MEDIA_QUERY)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
     desktopViewportListener = (event: MediaQueryListEvent) => {
       isDesktopViewport.value = event.matches

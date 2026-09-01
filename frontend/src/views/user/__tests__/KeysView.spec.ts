@@ -92,7 +92,7 @@ const messages: Record<string, string> = {
   'keys.modelRedirect.duplicateSource': 'Duplicate source model',
   'keys.modelRedirect.tooManyRules': 'Too many redirect rules',
   'keys.id': 'ID',
-  'keys.currentConcurrency': 'Current Concurrency',
+  'keys.currentConcurrency': 'Concurrency',
   'keys.lastUsedAt': 'Last Used',
   'keys.lastUsedIP': 'Last Used IP',
   'keys.rateLimitColumn': 'Rate Limit',
@@ -243,7 +243,7 @@ const DataTableStub = {
       <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
       <div data-test="columns-meta">{{ JSON.stringify(columns.map((col) => ({ key: col.key, sortable: !!col.sortable }))) }}</div>
       <button data-test="sort-current-concurrency" @click="$emit('sort', 'current_concurrency', 'asc')">
-        Sort Current Concurrency
+        Sort Concurrency
       </button>
       <div v-if="loading" data-test="table-loading">Loading</div>
       <div v-for="row in data" :key="row.id">
@@ -563,7 +563,7 @@ describe('user KeysView column settings', () => {
     const columnMenuText = wrapper.text()
     expect(columnMenuText).toContain('API Key')
     expect(columnMenuText).toContain('ID')
-    expect(columnMenuText).toContain('Current Concurrency')
+    expect(columnMenuText).toContain('Concurrency')
     expect(columnMenuText).toContain('Rate Limit')
     expect(columnMenuText).toContain('Last Used IP')
     expect(columnMenuText).not.toContain('Name')

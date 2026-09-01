@@ -622,7 +622,7 @@ affiliates: {
       adjustConcurrency: 'Adjust Concurrency',
       adjustmentAmount: 'Adjustment Amount',
       adjustmentAmountHint: 'Positive to add, negative to subtract',
-      currentConcurrency: 'Current Concurrency',
+      currentConcurrency: 'Concurrency',
       saving: 'Saving...',
       noUsers: 'No users yet',
       noUsersDescription: 'Create your first user to get started.',
