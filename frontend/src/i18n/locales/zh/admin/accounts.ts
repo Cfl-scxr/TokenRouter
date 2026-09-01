@@ -215,6 +215,11 @@ export default {
         settingNames: {
           sticky_weighted_enabled: '粘性加权',
           subscription_priority_enabled: '订阅优先',
+          ewma_error_rate_alpha: '错误率 EWMA 因子',
+          ewma_ttft_alpha: 'TTFT EWMA 因子',
+          sticky_escape_enabled: '粘性逃逸',
+          sticky_escape_ttft_ms: '粘性逃逸 TTFT 阈值（毫秒）',
+          sticky_escape_error_rate: '粘性逃逸错误率阈值（0-1）',
           lb_top_k: 'Top-K',
           weight_priority: '优先级权重',
           weight_load: '负载权重',

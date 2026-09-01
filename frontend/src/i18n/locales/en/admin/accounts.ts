@@ -304,6 +304,11 @@ export default {
         settingNames: {
           sticky_weighted_enabled: 'Sticky weighting',
           subscription_priority_enabled: 'Subscription priority',
+          ewma_error_rate_alpha: 'Error-rate EWMA factor',
+          ewma_ttft_alpha: 'TTFT EWMA factor',
+          sticky_escape_enabled: 'Sticky escape',
+          sticky_escape_ttft_ms: 'Sticky escape TTFT threshold (ms)',
+          sticky_escape_error_rate: 'Sticky escape error-rate threshold (0-1)',
           lb_top_k: 'Top-K',
           weight_priority: 'Priority weight',
           weight_load: 'Load weight',
