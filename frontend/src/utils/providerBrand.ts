@@ -316,7 +316,7 @@ const defaultProviderBrandKeys: ProviderBrandKey[] = [
 const providerBrandAliases: Record<ProviderBrandKey, string[]> = {
   anthropic: ['anthropic', 'claude'],
   deepseek: ['deepseek', 'deep seek'],
-  google: ['google', 'gemini', 'gemma', 'vertex', 'google ai studio', 'imagen', 'veo'],
+  google: ['google', 'gemini', 'gemma', 'vertex', 'google ai studio', 'imagen', 'veo', 'nano-banana'],
   moonshot: ['moonshot', 'kimi'],
   openai: ['openai', 'open ai', 'chatgpt', 'gpt', 'dalle', 'sora'],
   zhipu: ['智谱', 'zhipu', 'glm', 'chatglm', 'cogview'],
