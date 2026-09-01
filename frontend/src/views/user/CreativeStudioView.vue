@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <AppLayout full-viewport>
     <!-- 整个内容区即无限画布背景：负外边距抵消 app-main 四周内边距，画布铺满全幅（含顶部，点阵直达 header 边界） -->
     <div
       ref="stageRef"
