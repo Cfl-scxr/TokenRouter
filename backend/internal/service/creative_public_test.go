@@ -1186,6 +1186,22 @@ func TestCreativeEnabledGate(t *testing.T) {
 	})
 }
 
+// TestCreativeGeminiNanoBananaCandidates 校验创作台支持 Gemini nano-banana 别名族。
+func TestCreativeGeminiNanoBananaCandidates(t *testing.T) {
+	for _, model := range []string{"nano-banana-pro", "nano-banana-2", "NANO-BANANA-PRO", "models/nano-banana-2"} {
+		require.True(t, isCreativeGeminiImageModel(model), "模型 %q 应识别为 Gemini 生图模型", model)
+		require.True(t, creativePlatformImageModel(PlatformGemini, model), "模型 %q 应通过执行器图片模型校验", model)
+		capabilities := creativeCapabilitiesForModel(PlatformGemini, model)
+		require.NotEmpty(t, capabilities.aspectRatios, "模型 %q 应暴露 Gemini 图片能力", model)
+	}
+	require.False(t, isCreativeGeminiImageModel("nano-banana"), "不完整的 nano-banana 名称不应被识别")
+
+	account := &Account{Platform: PlatformGemini, Credentials: map[string]any{}}
+	models := creativeGeminiModelsForAccount(account)
+	require.Contains(t, models, "nano-banana-pro")
+	require.Contains(t, models, "nano-banana-2")
+}
+
 func TestCreativeModelSettingsFilterAndCreateValidation(t *testing.T) {
 	svc := newCreativeTestService()
 	svc.Settings = &creativeFakeSettingReader{

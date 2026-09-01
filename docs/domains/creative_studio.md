@@ -180,7 +180,7 @@ creative_settle:{run_id}    写 usage_logs 的结算记录 ID
 
 当前不暴露无法与异步任务、存储或计费边界稳定对应的上游参数：OpenAI `moderation`、`input_fidelity`、`stream`、`partial_images`，Gemini `includeThoughts`、`temperature`、`topP`、`topK`、`seed`、Google Search grounding 和通用 `candidateCount`，以及任意自定义 OpenAI `WxH` 尺寸。审核策略由服务端统一控制，`gpt-image-2` 固定高保真，Gemini 中间 thought image 固定不返回。
 
-模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex）；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。账号未配置模型映射时等价于网关全量透传语义，按平台默认候选回退，并额外纳入账号显式 `model_whitelist` 中匹配图片模型谓词的变体，再执行账号最终模型白名单过滤。尺寸档位：分组显式配置 `image_price_*` 时按配置返回并按已知模型能力收窄；GPT Image 2 即使分组未填写 4K 覆盖价也会开放 `4K` 并沿用默认价；Gemini 3.1 Flash Image 额外开放 `512`，该档位优先使用渠道自定义 `512` 分层价格，未配置时回退渠道默认价格；`gemini-2.5-flash-image` 与 `gemini-3.1-flash-lite-image` 固定为 `1K`。接口同时返回按模型广场分组倍率计算的各尺寸展示单价，创作台预估费用按所选尺寸单价计算，每次任务固定单张输出。
+模型候选：Gemini 复用批量图片的账号模型映射展开（含 Vertex），并额外内置 `nano-banana-pro`/`nano-banana-2` 两个代理别名；`nano-banana-*` 别名族按 Gemini 图片模型处理；OpenAI 候选为 `gpt-image-1`/`gpt-image-2`；Grok 候选为 `grok-imagine` 系列。账号未配置模型映射时等价于网关全量透传语义，按平台默认候选回退，并额外纳入账号显式 `model_whitelist` 中匹配图片模型谓词的变体，再执行账号最终模型白名单过滤。尺寸档位：分组显式配置 `image_price_*` 时按配置返回并按已知模型能力收窄；GPT Image 2 即使分组未填写 4K 覆盖价也会开放 `4K` 并沿用默认价；Gemini 3.1 Flash Image 额外开放 `512`，该档位优先使用渠道自定义 `512` 分层价格，未配置时回退渠道默认价格；`gemini-2.5-flash-image` 与 `gemini-3.1-flash-lite-image` 固定为 `1K`。接口同时返回按模型广场分组倍率计算的各尺寸展示单价，创作台预估费用按所选尺寸单价计算，每次任务固定单张输出。
 
 管理员候选接口 `GET /api/v1/admin/settings/creative-model-candidates` 返回当前 active、启用图片生成且存在可调度图片模型的全部分组和模型，不按管理员用户分组权限过滤，因此可以配置 exclusive 分组。OpenAI 候选返回 `generate`/`edit`/`inpaint`，Gemini/Grok 候选返回 `generate`/`edit`。
 

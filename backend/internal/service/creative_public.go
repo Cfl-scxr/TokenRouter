@@ -440,7 +440,7 @@ func creativeCapabilitiesForModel(platform, model string) creativeModelCapabilit
 		}
 		capabilities.maxReferenceImages = grokMediaMaxEditSourceImages
 	case PlatformGemini:
-		if !isImageGenerationModel(normalizedModel) && !strings.Contains(normalizedModel, "image") {
+		if !isCreativeGeminiImageModel(normalizedModel) && !isImageGenerationModel(normalizedModel) && !strings.Contains(normalizedModel, "image") {
 			return capabilities
 		}
 		capabilities.aspectRatios = []string{
@@ -658,7 +658,7 @@ func creativeGeminiModelsForAccount(account *Account) []string {
 		// 展开请求模型后再校验最终映射模型，避免文本别名映射到图片模型时被误过滤。
 		models := make(map[string]struct{})
 		mapping := account.GetModelMapping()
-		candidates := append([]string(nil), defaultBatchImageModelCandidates()...)
+		candidates := defaultCreativeGeminiModelCandidates()
 		candidates = append(candidates, account.GetConfiguredRequestModels()...)
 		for requested := range mapping {
 			requested = strings.TrimSpace(requested)
@@ -691,7 +691,7 @@ func creativeGeminiModelsForAccount(account *Account) []string {
 	}
 
 	models := make(map[string]struct{})
-	candidateModels := append([]string(nil), defaultBatchImageModelCandidates()...)
+	candidateModels := defaultCreativeGeminiModelCandidates()
 	candidateModels = append(candidateModels, account.GetConfiguredRequestModels()...)
 	for _, model := range candidateModels {
 		model = strings.TrimSpace(model)
@@ -710,9 +710,11 @@ func creativeGeminiModelsForAccount(account *Account) []string {
 }
 
 // isCreativeGeminiImageModel 按 Gemini 图片模型的命名约定识别显式白名单变体。
+// nano-banana-* 是 Gemini 图片模型的代理别名族，也允许作为创作台请求模型。
 func isCreativeGeminiImageModel(model string) bool {
 	model = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
-	return strings.HasPrefix(model, "gemini-") && strings.Contains(model, "image")
+	return (strings.HasPrefix(model, "gemini-") && strings.Contains(model, "image")) ||
+		strings.HasPrefix(model, "nano-banana-")
 }
 
 // creativeExpandAccountModels 展开账号模型映射，通配符按候选集合匹配，再按谓词过滤图片模型。
@@ -773,6 +775,13 @@ func creativeExpandAccountModels(account *Account, candidates []string, matches 
 
 func defaultCreativeOpenAIModelCandidates() []string {
 	return []string{"gpt-image-1", "gpt-image-2"}
+}
+
+// defaultCreativeGeminiModelCandidates 返回创作台内置的 Gemini 图片模型候选。
+// nano-banana-* 是代理侧常用别名，保留已知别名以支持未配置账号映射的账号。
+func defaultCreativeGeminiModelCandidates() []string {
+	candidates := append([]string(nil), defaultBatchImageModelCandidates()...)
+	return append(candidates, "nano-banana-pro", "nano-banana-2")
 }
 
 func defaultCreativeGrokModelCandidates() []string {
