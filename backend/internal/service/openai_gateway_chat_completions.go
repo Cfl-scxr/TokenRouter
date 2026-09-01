@@ -109,12 +109,12 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
 
 	// 自适应账号的标准 Chat 入站使用供应商原生 CC 端点；Responses 形状下，
-	// DeepSeek 保留原生 Responses，Kimi/智谱先转换为 Chat。
+	// DeepSeek / Kimi 保留原生 Responses，智谱先转换为 Chat。
 	if account.IsAdaptiveAPIProtocol() {
 		if !isResponsesShape {
 			return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel, tlsRouterMatch...)
 		}
-		if account.Platform != PlatformDeepseek {
+		if !account.SupportsNativeCNResponses() {
 			var responsesReq apicompat.ResponsesRequest
 			if err := json.Unmarshal(body, &responsesReq); err != nil {
 				return nil, fmt.Errorf("parse responses-shaped chat completions request: %w", err)
@@ -132,6 +132,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			}
 			return s.forwardAsRawChatCompletions(ctx, c, account, chatBody, defaultMappedModel, tlsRouterMatch...)
 		}
+		// DeepSeek / Kimi 原生 Responses 请求继续走下方 Responses→Chat 回程转换。
 	}
 
 	// 固定 Anthropic 协议走原生 Anthropic 端点。
