@@ -209,6 +209,18 @@ function emitWheel(overrides: Parameters<typeof makeWheelEvent>[0] = {}): WheelE
   return event
 }
 
+function makeTouchEvent(
+  type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel',
+  touches: Array<{ clientX: number; clientY: number }>,
+): TouchEvent {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as TouchEvent
+  Object.defineProperties(event, {
+    touches: { configurable: true, value: touches },
+    changedTouches: { configurable: true, value: touches },
+  })
+  return event
+}
+
 function mountCanvas() {
   return mount(CreativeCanvas, {
     props: { operation: 'generate' },
@@ -381,6 +393,26 @@ describe('CreativeCanvas 拖放', () => {
     fabricState.main.setViewportTransform([0.2, 0, 0, 0.2, 0, 0])
     emitWheel({ deltaY: 100, ctrlKey: true })
     expect(fabricState.main.getZoom()).toBe(0.2)
+    wrapper.unmount()
+  })
+
+  it('移动端双指缩放以手势中点下的场景点为锚并同步平移', () => {
+    const wrapper = mountCanvas()
+    fabricState.viewportPoint = { x: 150, y: 100 }
+    const container = wrapper.find('.dot-grid').element
+    container.dispatchEvent(makeTouchEvent('touchstart', [
+      { clientX: 100, clientY: 100 },
+      { clientX: 200, clientY: 100 },
+    ]))
+    const move = makeTouchEvent('touchmove', [
+      { clientX: 100, clientY: 100 },
+      { clientX: 220, clientY: 100 },
+    ])
+    container.dispatchEvent(move)
+
+    expect(fabricState.main.getZoom()).toBeCloseTo(1.2)
+    expect(fabricState.main.viewportTransform.slice(4)).toEqual([-20, -20])
+    expect(move.defaultPrevented).toBe(true)
     wrapper.unmount()
   })
 

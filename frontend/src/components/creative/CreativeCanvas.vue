@@ -172,7 +172,7 @@
 <script setup lang="ts">
 /**
  * 创作台无限画布（fabric 7）
- * - 逻辑尺寸跟随容器；空白处拖拽或普通 wheel 平移视角，触控板捏合（ctrlKey wheel）以光标为中心缩放（0.2–3）
+ * - 逻辑尺寸跟随容器；空白处拖拽或普通 wheel 平移视角，触控板捏合（ctrlKey wheel）与移动端双指手势缩放（0.2–3）
  * - 图片对象可点选 / 拖动 / Delete 删除；生成输出自动按"上一个放置位置右侧 40px、约 2200px 换行"上板并平滑平移视角
  * - 局部重绘：选中图片自动进入涂抹模式（紫色笔迹 = 重绘区域，导出时自动转白底 mask）；
  *   涂抹中可用中键 / 右键拖拽平移，工具栏开关可暂停涂抹去移动 / 换选图片
@@ -411,6 +411,13 @@ function removeMaskPath(path: FabricObject): void {
 type BrushShape = 'round' | 'square'
 type ImageResolution = { width: number; height: number }
 type ResolutionTag = { image: FabricImage; background: Rect; text: FabricText }
+type TouchPoint = { clientX: number; clientY: number }
+type PinchGesture = {
+  startDistance: number
+  startZoom: number
+  startScenePoint: { x: number; y: number }
+  startViewportTransform: TMat2D
+}
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const canvasElRef = ref<HTMLCanvasElement | null>(null)
@@ -471,6 +478,8 @@ let dragDepth = 0
 let isPanning = false
 let lastClientX = 0
 let lastClientY = 0
+// 移动端双指手势状态；以开始时中点下的场景点为锚，避免缩放过程中画面漂移
+let pinchGesture: PinchGesture | null = null
 // 平滑平移动画的 rAF 句柄
 let panAnimFrame: number | null = null
 // 图片原始 blob 的运行时缓存：assetKey → blob（生成时取源图，避免反复读 IndexedDB）
@@ -517,6 +526,7 @@ onMounted(() => {
     maskCanvas.setViewportTransform([...canvas.viewportTransform] as TMat2D)
   }
   bindCanvasEvents()
+  bindTouchGestures(container)
   syncCanvasSelection()
   // 涂抹模式下右键 / 中键拖拽平移，需屏蔽画布上的右键菜单
   container.addEventListener('contextmenu', suppressContextMenu)
@@ -547,8 +557,10 @@ onBeforeUnmount(() => {
   container?.removeEventListener('dragover', onDragOver)
   container?.removeEventListener('dragleave', onDragLeave)
   container?.removeEventListener('drop', onDrop)
+  unbindTouchGestures(container)
   dragDepth = 0
   dropTargetActive.value = false
+  pinchGesture = null
   resizeObserver?.disconnect()
   resizeObserver = null
   stopPanAnim()
@@ -787,6 +799,151 @@ function bindCanvasEvents(): void {
       refreshResolutionTag(inpaintAnchor.value instanceof FabricImage ? inpaintAnchor.value : null)
     }
   })
+}
+
+// ==================== 移动端双指缩放 ====================
+
+// 触控事件使用捕获阶段，确保 Fabric 的主触点拖动不会抢走双指移动事件。
+function bindTouchGestures(container: HTMLDivElement): void {
+  container.addEventListener('touchstart', onCanvasTouchStart, { capture: true, passive: false })
+  container.addEventListener('touchmove', onCanvasTouchMove, { capture: true, passive: false })
+  container.addEventListener('touchend', onCanvasTouchEnd, { capture: true, passive: false })
+  container.addEventListener('touchcancel', onCanvasTouchCancel, { capture: true, passive: false })
+}
+
+function unbindTouchGestures(container: HTMLDivElement | null): void {
+  if (!container) return
+  container.removeEventListener('touchstart', onCanvasTouchStart, true)
+  container.removeEventListener('touchmove', onCanvasTouchMove, true)
+  container.removeEventListener('touchend', onCanvasTouchEnd, true)
+  container.removeEventListener('touchcancel', onCanvasTouchCancel, true)
+}
+
+function touchPoints(event: TouchEvent): [TouchPoint, TouchPoint] | null {
+  if (!event.touches || event.touches.length < 2) return null
+  const first = event.touches[0]
+  const second = event.touches[1]
+  if (!first || !second) return null
+  return [
+    { clientX: first.clientX, clientY: first.clientY },
+    { clientX: second.clientX, clientY: second.clientY },
+  ]
+}
+
+function midpointAndDistance(points: [TouchPoint, TouchPoint]): { midpoint: TouchPoint; distance: number } {
+  const [first, second] = points
+  return {
+    midpoint: {
+      clientX: (first.clientX + second.clientX) / 2,
+      clientY: (first.clientY + second.clientY) / 2,
+    },
+    distance: Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY),
+  }
+}
+
+// Fabric 的指针换算同时处理画布偏移、滚动和 Retina 缩放；没有该 API 时回退到 DOM 边界换算，便于测试和降级环境继续工作。
+function viewportPointForClient(point: TouchPoint): { x: number; y: number } {
+  if (!canvas) return { x: point.clientX, y: point.clientY }
+  const target = canvas.upperCanvasEl ?? canvasElRef.value ?? containerRef.value
+  const pointerEvent = {
+    type: 'touchmove',
+    target,
+    touches: [point],
+    changedTouches: [point],
+  } as unknown as TouchEvent
+  const fabricCanvas = canvas as unknown as {
+    getViewportPoint?: (event: TouchEvent) => { x: number; y: number }
+  }
+  if (typeof fabricCanvas.getViewportPoint === 'function') {
+    return fabricCanvas.getViewportPoint(pointerEvent)
+  }
+  const bounds = target?.getBoundingClientRect?.()
+  return {
+    x: point.clientX - (bounds?.left ?? 0),
+    y: point.clientY - (bounds?.top ?? 0),
+  }
+}
+
+function scenePointForClient(point: TouchPoint): { x: number; y: number } {
+  if (!canvas) return { x: point.clientX, y: point.clientY }
+  const target = canvas.upperCanvasEl ?? canvasElRef.value ?? containerRef.value
+  const pointerEvent = {
+    type: 'touchmove',
+    target,
+    touches: [point],
+    changedTouches: [point],
+  } as unknown as TouchEvent
+  const fabricCanvas = canvas as unknown as {
+    getScenePoint?: (event: TouchEvent) => { x: number; y: number }
+  }
+  if (typeof fabricCanvas.getScenePoint === 'function') {
+    return fabricCanvas.getScenePoint(pointerEvent)
+  }
+  const viewport = viewportPointForClient(point)
+  const [a, b, c, d, tx, ty] = canvas.viewportTransform
+  const determinant = a * d - b * c
+  if (!determinant) return viewport
+  return {
+    x: (d * (viewport.x - tx) - c * (viewport.y - ty)) / determinant,
+    y: (-b * (viewport.x - tx) + a * (viewport.y - ty)) / determinant,
+  }
+}
+
+function onCanvasTouchStart(event: TouchEvent): void {
+  const points = touchPoints(event)
+  if (!canvas || !points) return
+  const { midpoint, distance } = midpointAndDistance(points)
+  if (!Number.isFinite(distance) || distance <= 0) return
+  const startViewportTransform = [...canvas.viewportTransform] as TMat2D
+  pinchGesture = {
+    startDistance: distance,
+    startZoom: canvas.getZoom(),
+    startScenePoint: scenePointForClient(midpoint),
+    startViewportTransform,
+  }
+  stopPanning()
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function onCanvasTouchMove(event: TouchEvent): void {
+  if (!canvas || !pinchGesture) return
+  const points = touchPoints(event)
+  if (!points) return
+  const { midpoint, distance } = midpointAndDistance(points)
+  if (!Number.isFinite(distance) || distance <= 0) return
+
+  const ratio = distance / pinchGesture.startDistance
+  const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pinchGesture.startZoom * ratio))
+  const linearRatio = nextZoom / pinchGesture.startZoom
+  const start = pinchGesture.startViewportTransform
+  const vpt = [...start] as TMat2D
+  vpt[0] = start[0] * linearRatio
+  vpt[1] = start[1] * linearRatio
+  vpt[2] = start[2] * linearRatio
+  vpt[3] = start[3] * linearRatio
+  const viewport = viewportPointForClient(midpoint)
+  vpt[4] = viewport.x - (vpt[0] * pinchGesture.startScenePoint.x + vpt[2] * pinchGesture.startScenePoint.y)
+  vpt[5] = viewport.y - (vpt[1] * pinchGesture.startScenePoint.x + vpt[3] * pinchGesture.startScenePoint.y)
+  canvas.setViewportTransform(vpt)
+  syncDotGrid()
+  scheduleSceneSave()
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function onCanvasTouchEnd(event: TouchEvent): void {
+  if (!pinchGesture || (event.touches?.length ?? 0) >= 2) return
+  event.preventDefault()
+  pinchGesture = null
+  isPanning = false
+}
+
+function onCanvasTouchCancel(event: TouchEvent): void {
+  if (!pinchGesture) return
+  event.preventDefault()
+  pinchGesture = null
+  isPanning = false
 }
 
 // 页面进入后台时提前刷新待写快照，降低直接关闭浏览器造成的最后一次变更丢失概率。
@@ -1781,6 +1938,8 @@ defineExpose({
 <style scoped>
 /* 深色圆点网格：浅色主题用暗点，dark 类下用亮点，画布背景透明透出 */
 .dot-grid {
+  /* 禁止浏览器接管双指手势，交由画布实现缩放与平移。 */
+  touch-action: none;
   background-image: radial-gradient(circle, rgb(15 23 42 / 0.12) 1px, transparent 1px);
   background-size: 20px 20px;
 }
