@@ -20,12 +20,12 @@
             <button
               @click="loadCodes"
               :disabled="loading"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('common.refresh')"
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
-            <button @click="showCreateDialog = true" class="btn btn-primary h-11 whitespace-nowrap px-3 sm:px-4">
+            <button @click="showCreateDialog = true" class="btn btn-primary h-9 whitespace-nowrap px-3 sm:px-4">
               <Icon name="plus" size="md" class="mr-1" />
               {{ t('admin.promo.createCode') }}
             </button>

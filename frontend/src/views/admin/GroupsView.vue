@@ -24,7 +24,7 @@
             <div ref="filterDropdownRef" class="relative shrink-0">
               <button
                 type="button"
-                class="btn btn-secondary relative h-11 w-11 p-0"
+                class="btn btn-secondary relative h-9 w-9 p-0"
                 :aria-expanded="showFilterDropdown"
                 :aria-label="t('common.filter')"
                 :title="t('common.filter')"
@@ -53,7 +53,7 @@
             <button
               @click="loadGroups"
               :disabled="loading"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('common.refresh')"
             >
               <Icon
@@ -65,7 +65,7 @@
             <div class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('admin.groups.columnSettings')"
               >
                 <Icon name="grid" size="md" />
@@ -94,14 +94,14 @@
             </div>
             <button
               @click="openSortModal"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('admin.groups.sortOrder')"
             >
               <Icon name="arrowsUpDown" size="md" />
             </button>
             <button
               @click="openCreateModal"
-              class="btn btn-primary h-11 whitespace-nowrap"
+              class="btn btn-primary h-9 whitespace-nowrap"
               data-tour="groups-create-btn"
             >
               <Icon name="plus" size="md" class="mr-2" />
@@ -1831,7 +1831,7 @@
                   <button
                     type="button"
                     @click="addCreateMessagesDispatchMapping"
-                    class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white py-3 text-sm font-medium text-gray-500 transition-all hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-primary-800 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
+                    class="flex h-9 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white py-1.5 text-sm font-medium text-gray-500 transition-all hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-primary-800 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
                   >
                     <Icon name="plus" size="sm" />
                     {{ t("admin.groups.openaiMessages.addExactMapping") }}
@@ -3664,7 +3664,7 @@
                   <button
                     type="button"
                     @click="addEditMessagesDispatchMapping"
-                    class="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white py-3 text-sm font-medium text-gray-500 transition-all hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-primary-800 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
+                    class="flex h-9 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-white py-1.5 text-sm font-medium text-gray-500 transition-all hover:border-primary-300 hover:bg-primary-50/50 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-primary-800 dark:hover:bg-primary-900/20 dark:hover:text-primary-400"
                   >
                     <Icon name="plus" size="sm" />
                     {{ t("admin.groups.openaiMessages.addExactMapping") }}

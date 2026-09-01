@@ -140,7 +140,7 @@
                   type="button"
                   @click="createAdminApiKey"
                   :disabled="adminApiKeyOperating"
-                  class="btn btn-primary btn-sm"
+                  class="btn btn-primary btn-sm h-9"
                 >
                   <svg
                     v-if="adminApiKeyOperating"
@@ -190,7 +190,7 @@
                       type="button"
                       @click="regenerateAdminApiKey"
                       :disabled="adminApiKeyOperating"
-                      class="btn btn-secondary btn-sm"
+                      class="btn btn-secondary btn-sm h-9"
                     >
                       {{
                         adminApiKeyOperating
@@ -202,7 +202,7 @@
                       type="button"
                       @click="deleteAdminApiKey"
                       :disabled="adminApiKeyOperating"
-                      class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                      class="btn btn-secondary btn-sm h-9 text-red-600 hover:text-red-700 dark:text-red-400"
                     >
                       {{ t("admin.settings.adminApiKey.delete") }}
                     </button>
@@ -228,7 +228,7 @@
                     <button
                       type="button"
                       @click="copyNewKey"
-                      class="btn btn-primary btn-sm flex-shrink-0"
+                      class="btn btn-primary btn-sm h-9 flex-shrink-0"
                     >
                       {{ t("admin.settings.adminApiKey.copyKey") }}
                     </button>
@@ -321,7 +321,7 @@
                     type="button"
                     @click="saveOverloadCooldownSettings"
                     :disabled="overloadCooldownSaving"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                   >
                     <svg
                       v-if="overloadCooldownSaving"
@@ -462,7 +462,7 @@
                   type="button"
                   @click="saveOpenAI403CooldownSettings"
                   :disabled="openAI403CooldownSaving"
-                  class="btn btn-primary btn-sm"
+                  class="btn btn-primary btn-sm h-9"
                 >
                   <svg
                     v-if="openAI403CooldownSaving"
@@ -576,7 +576,7 @@
                     type="button"
                     @click="saveRateLimit429CooldownSettings"
                     :disabled="rateLimit429CooldownSaving"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                   >
                     <svg
                       v-if="rateLimit429CooldownSaving"
@@ -749,7 +749,7 @@
                     type="button"
                     @click="saveStreamTimeoutSettings"
                     :disabled="streamTimeoutSaving"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                   >
                     <svg
                       v-if="streamTimeoutSaving"
@@ -955,7 +955,7 @@
                     type="button"
                     @click="saveRectifierSettings"
                     :disabled="rectifierSaving"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                   >
                     <svg
                       v-if="rectifierSaving"
@@ -1238,7 +1238,7 @@
                     type="button"
                     @click="saveBetaPolicySettings"
                     :disabled="betaPolicySaving"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                   >
                     <svg
                       v-if="betaPolicySaving"
@@ -1597,7 +1597,7 @@
                 <button
                   type="button"
                   @click="addOpenAIFastPolicyRule"
-                  class="btn btn-secondary btn-sm inline-flex items-center gap-1"
+                  class="btn btn-secondary btn-sm h-9 inline-flex items-center gap-1"
                 >
                   <svg
                     class="h-4 w-4"
@@ -2176,7 +2176,7 @@
                     data-testid="panel-rate-limit-save"
                     @click="savePanelRateLimitSettings"
                     :disabled="panelRateLimitSaving"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                   >
                     <svg
                       v-if="panelRateLimitSaving"
@@ -2710,7 +2710,7 @@
                     >
                       <button
                         type="button"
-                        class="btn btn-secondary btn-sm w-fit"
+                        class="btn btn-secondary btn-sm h-9 w-fit"
                         @click="setAndCopyLinuxdoRedirectUrl"
                       >
                         {{ t("admin.settings.linuxdo.quickSetCopy") }}
@@ -2832,7 +2832,7 @@
                       <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                         <button
                           type="button"
-                          class="btn btn-secondary btn-sm w-fit"
+                          class="btn btn-secondary btn-sm h-9 w-fit"
                           @click="setAndCopyEmailOAuthRedirectUrl('github')"
                         >
                           {{ localText("生成并复制", "Generate and copy") }}
@@ -2916,7 +2916,7 @@
                           </code>
                           <button
                             type="button"
-                            class="btn btn-secondary btn-sm w-fit"
+                            class="btn btn-secondary btn-sm h-9 w-fit"
                             :disabled="!googleOneTapOriginSuggestion"
                             @click="copyGoogleOneTapOrigin"
                           >
@@ -2973,7 +2973,7 @@
                       <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                         <button
                           type="button"
-                          class="btn btn-secondary btn-sm w-fit"
+                          class="btn btn-secondary btn-sm h-9 w-fit"
                           @click="setAndCopyEmailOAuthRedirectUrl('google')"
                         >
                           {{ localText("生成并复制", "Generate and copy") }}
@@ -3310,7 +3310,7 @@
                     >
                       <button
                         type="button"
-                        class="btn btn-secondary btn-sm w-fit"
+                        class="btn btn-secondary btn-sm h-9 w-fit"
                         @click="setAndCopyWeChatRedirectUrl"
                       >
                         {{ t("admin.settings.wechatConnect.generateAndCopy") }}
@@ -3857,7 +3857,7 @@
                     >
                       <button
                         type="button"
-                        class="btn btn-secondary btn-sm w-fit"
+                        class="btn btn-secondary btn-sm h-9 w-fit"
                         @click="setAndCopyOIDCRedirectUrl"
                       >
                         {{ t("admin.settings.oidc.quickSetCopy") }}
@@ -4143,7 +4143,7 @@
                   </div>
                   <button
                     type="button"
-                    class="btn btn-secondary btn-sm"
+                    class="btn btn-secondary btn-sm h-9"
                     @click="addDefaultSubscription"
                     :disabled="subscriptionPlans.length === 0"
                   >
@@ -4389,7 +4389,7 @@
                       </div>
                       <button
                         type="button"
-                        class="btn btn-secondary btn-sm"
+                        class="btn btn-secondary btn-sm h-9"
                         @click="
                           addAuthSourceDefaultSubscription(authSource.source)
                         "
@@ -4654,7 +4654,7 @@
                 <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
                   <button
                     type="button"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-sm h-9"
                     :disabled="ollamaCloudUsageSaving"
                     data-testid="ollama-cloud-usage-global-save"
                     @click="saveOllamaCloudUsageSettings"
@@ -5490,14 +5490,14 @@
               <div class="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  class="btn btn-secondary btn-sm"
+                  class="btn btn-secondary btn-sm h-9"
                   @click="addUserPromptReplacementRule"
                 >
                   {{ t("admin.settings.userPromptReplacement.addRule") }}
                 </button>
                 <button
                   type="button"
-                  class="btn btn-secondary btn-sm"
+                  class="btn btn-secondary btn-sm h-9"
                   @click="resetUserPromptReplacementRules"
                 >
                   {{ t("admin.settings.userPromptReplacement.resetDefault") }}
@@ -5530,7 +5530,7 @@
                   </div>
                   <button
                     type="button"
-                    class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                    class="btn btn-secondary btn-sm h-9 text-red-600 hover:text-red-700 dark:text-red-400"
                     @click="removeUserPromptReplacementRule(index)"
                   >
                     {{ t("common.delete") }}
@@ -5661,7 +5661,7 @@
                   </label>
                   <button
                     type="button"
-                    class="btn btn-secondary btn-sm"
+                    class="btn btn-secondary btn-sm h-9"
                     @click="addWebSearchProvider"
                   >
                     {{ t("admin.settings.webSearchEmulation.addProvider") }}
@@ -5964,7 +5964,7 @@
                       </div>
                       <button
                         type="button"
-                        class="btn btn-secondary btn-sm whitespace-nowrap"
+                        class="btn btn-secondary btn-sm h-9 whitespace-nowrap"
                         @click="openTestDialog()"
                       >
                         {{ t("admin.settings.webSearchEmulation.test") }}
@@ -6002,7 +6002,7 @@
                 />
                 <button
                   type="button"
-                  class="btn btn-primary btn-sm"
+                  class="btn btn-primary btn-sm h-9"
                   :disabled="wsTestLoading"
                   @click="testWebSearchProvider()"
                 >
@@ -6050,7 +6050,7 @@
               <div class="mt-4 flex justify-end">
                 <button
                   type="button"
-                  class="btn btn-secondary btn-sm"
+                  class="btn btn-secondary btn-sm h-9"
                   @click="wsTestDialogOpen = false"
                 >
                   {{ t("common.close") }}
@@ -6688,7 +6688,7 @@
 
                 <button
                   type="button"
-                  class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                  class="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-1.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
                   @click="addEndpoint"
                 >
                   <svg
@@ -6963,7 +6963,7 @@
               <!-- Add button -->
               <button
                 type="button"
-                class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                class="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-1.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
                 @click="addMenuItem"
               >
                 <svg
@@ -7005,7 +7005,7 @@
               <button
                 v-if="form.home_featured_models.length > 0"
                 type="button"
-                class="btn btn-secondary btn-sm shrink-0"
+                class="btn btn-secondary btn-sm h-9 shrink-0"
                 @click="form.home_featured_models = []"
               >
                 {{ localText("清空", "Clear") }}
@@ -7061,7 +7061,7 @@
               <!-- Add model button -->
               <button
                 type="button"
-                class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                class="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-1.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
                 :disabled="form.home_featured_models.length >= homeFeaturedModelsMax"
                 @click="form.home_featured_models.push('')"
               >
@@ -7099,7 +7099,7 @@
               </div>
               <button
                 type="button"
-                class="btn btn-secondary btn-sm shrink-0"
+                class="btn btn-secondary btn-sm h-9 shrink-0"
                 @click="applyDefaultFooterLinks"
               >
                 {{ localText("使用默认模板", "Use default template") }}
@@ -7200,7 +7200,7 @@
               <!-- Add group button -->
               <button
                 type="button"
-                class="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-3 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
+                class="flex h-9 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 py-1.5 text-sm text-gray-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-dark-600 dark:text-gray-400 dark:hover:border-primary-500 dark:hover:text-primary-400"
                 @click="addFooterGroup"
               >
                 <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -7328,7 +7328,7 @@
                   </div>
                   <button
                     type="button"
-                    class="btn btn-primary btn-sm inline-flex items-center gap-1.5"
+                    class="btn btn-primary btn-sm h-9 inline-flex items-center gap-1.5"
                     @click="addLoginAgreementDocument"
                   >
                     <Icon name="plus" size="sm" />
@@ -8131,7 +8131,7 @@
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                class="input h-10 w-full pl-8"
+                                class="input h-9 w-full pl-8"
                                 :disabled="!methodFeeEnabled(method.value)"
                                 :value="methodFeeValue(method.value, 'fixed_fee')"
                                 @input="setMethodFeeValue(method.value, 'fixed_fee', ($event.target as HTMLInputElement).value)"
@@ -8149,7 +8149,7 @@
                                 step="0.01"
                                 min="0"
                                 max="100"
-                                class="input h-10 w-full pr-8"
+                                class="input h-9 w-full pr-8"
                                 :disabled="!methodFeeEnabled(method.value)"
                                 :value="methodFeeValue(method.value, 'fee_rate')"
                                 @input="setMethodFeeValue(method.value, 'fee_rate', ($event.target as HTMLInputElement).value)"
@@ -8390,7 +8390,7 @@
                       :class="[
                         'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
                         isPaymentTypeEnabled(pt.value)
-                          ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                          ? 'border-primary-600 bg-primary-600 text-white shadow-sm'
                           : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
                       ]"
                     >
@@ -8517,7 +8517,7 @@
                 type="button"
                 @click="testSmtpConnection"
                 :disabled="testingSmtp || loadFailed"
-                class="btn btn-secondary btn-sm"
+                class="btn btn-secondary btn-sm h-9"
               >
                 <svg
                   v-if="testingSmtp"
@@ -8883,7 +8883,7 @@
                   </div>
                   <button
                     @click="addQuotaNotifyEmail"
-                    class="btn btn-secondary btn-sm"
+                    class="btn btn-secondary btn-sm h-9"
                     type="button"
                   >
                     + {{ t("admin.settings.quotaNotify.addEmail") }}
@@ -13324,11 +13324,11 @@ watch(
 
 <style scoped>
 .default-sub-group-select :deep(.select-trigger) {
-  @apply h-[42px];
+  @apply h-9 min-h-9;
 }
 
 .default-sub-delete-btn {
-  @apply h-[42px];
+  @apply h-9 min-h-9;
 }
 
 /* ============ 系统设置 Tab 导航 ============ */
@@ -13354,7 +13354,7 @@ watch(
 }
 
 .settings-tab {
-  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-compact border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
+  @apply relative isolate flex h-9 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-compact border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
 }
 
 @media (min-width: 768px) {

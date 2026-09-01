@@ -83,7 +83,7 @@
           <div ref="filterPanelRef" class="relative shrink-0">
             <button
               type="button"
-              class="btn btn-secondary relative h-11 w-11 p-0"
+              class="btn btn-secondary relative h-9 w-9 p-0"
               :aria-expanded="showFilterDropdown"
               :aria-label="t('common.filter')"
               :title="t('common.filter')"
@@ -153,14 +153,14 @@
           </div>
 
           <div class="flex flex-wrap items-center justify-end gap-2">
-            <button type="button" @click="refreshData" :disabled="activeTab === 'errors' ? errorLoading : loading" class="btn btn-secondary h-11 w-11 p-0" :title="t('common.refresh')">
+            <button type="button" @click="refreshData" :disabled="activeTab === 'errors' ? errorLoading : loading" class="btn btn-secondary h-9 w-9 p-0" :title="t('common.refresh')">
               <Icon name="refresh" size="sm" :class="(activeTab === 'errors' ? errorLoading : loading) ? 'animate-spin' : ''" />
             </button>
             <div class="relative" ref="columnDropdownRef">
               <button
                 type="button"
                 @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('admin.users.columnSettings')"
               >
                 <Icon name="grid" size="sm" />
@@ -188,7 +188,7 @@
               inline
               @failed="handleIpGeoBatchFailed"
             />
-            <button v-if="activeTab !== 'errors'" type="button" @click="exportToCSV" :disabled="exporting" class="btn btn-primary h-11 whitespace-nowrap px-3 sm:px-4">
+            <button v-if="activeTab !== 'errors'" type="button" @click="exportToCSV" :disabled="exporting" class="btn btn-primary h-9 whitespace-nowrap px-3 sm:px-4">
               {{ exporting ? t('usage.exporting') : t('usage.exportCsv') }}
             </button>
           </div>
@@ -204,7 +204,7 @@
         </button>
       </div>
 
-      <div v-if="activeTab === 'usage'" data-tour="team-usage-records">
+      <div v-if="activeTab === 'usage'" class="space-y-4" data-tour="team-usage-records">
         <UsageTable
           :data="usageLogs"
           :loading="loading"

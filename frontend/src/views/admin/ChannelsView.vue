@@ -34,12 +34,12 @@
             <button
               @click="loadChannels"
               :disabled="loading"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('common.refresh', 'Refresh')"
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
-            <button @click="openCreateDialog" class="btn btn-primary h-11 whitespace-nowrap px-3 sm:px-4">
+            <button @click="openCreateDialog" class="btn btn-primary h-9 whitespace-nowrap px-3 sm:px-4">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.channels.createChannel', 'Create Channel') }}
             </button>
@@ -1772,7 +1772,7 @@ onUnmounted(() => {
 }
 
 .channel-tab {
-  @apply flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap;
+  @apply flex h-9 items-center gap-1.5 px-3 py-1.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap;
 }
 
 .channel-tab-active {

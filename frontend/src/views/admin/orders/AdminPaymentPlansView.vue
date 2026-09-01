@@ -3,7 +3,7 @@
     <template #page-heading-actions>
       <div class="flex items-center justify-end gap-2">
         <button
-          class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+          class="btn btn-secondary h-9 w-9 shrink-0 p-0"
           :disabled="plansLoading"
           :title="t('common.refresh')"
           @click="loadPlans"
@@ -16,8 +16,10 @@
         </button>
       </div>
     </template>
-    <div class="space-y-4">
-      <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
+    <TablePageLayout>
+      <template #table>
+        <!-- 套餐表格复用 API Keys 与订单页相同的滚动卡片容器，字段和操作列保持套餐专属逻辑。 -->
+        <DataTable :columns="planColumns" :data="plans" :loading="plansLoading">
         <template #cell-price="{ value, row }">
           <div class="text-sm">
             <span class="font-medium text-gray-900 dark:text-white">{{ planCurrencySymbol(row.currency) }}{{ (value ?? 0).toFixed(2) }}</span>
@@ -88,8 +90,9 @@
             </button>
           </div>
         </template>
-      </DataTable>
-    </div>
+        </DataTable>
+      </template>
+    </TablePageLayout>
 
     <PlanEditDialog
       :show="showPlanDialog"
@@ -121,6 +124,7 @@ import { extractI18nErrorMessage } from '@/utils/apiError'
 import type { SubscriptionPlan } from '@/types/payment'
 import type { Column } from '@/components/common/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'

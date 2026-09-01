@@ -12,7 +12,7 @@
       <button
         type="button"
         data-testid="account-filters-toggle"
-        class="btn btn-secondary relative h-11 w-11 p-0"
+        class="btn btn-secondary relative h-9 w-9 p-0"
         :class="activeFilterCount > 0 ? 'border-primary-400 text-primary-700 dark:border-primary-500 dark:text-primary-300' : ''"
         :aria-expanded="showFilters"
         :aria-label="t('common.filter')"

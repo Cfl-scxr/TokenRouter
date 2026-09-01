@@ -16,7 +16,7 @@
         <div ref="filterPanelRef" class="relative shrink-0">
           <button
             type="button"
-            class="btn btn-secondary relative h-11 w-11 p-0"
+            class="btn btn-secondary relative h-9 w-9 p-0"
             :aria-expanded="showFilterDropdown"
             :aria-label="t('common.filter')"
             :title="t('common.filter')"
@@ -126,7 +126,7 @@
           <div ref="filterPanelRef" class="relative shrink-0">
             <button
               type="button"
-              class="btn btn-secondary relative h-11 w-11 p-0"
+              class="btn btn-secondary relative h-9 w-9 p-0"
               :aria-expanded="showFilterDropdown"
               :aria-label="t('common.filter')"
               :title="t('common.filter')"

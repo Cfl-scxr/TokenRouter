@@ -1,6 +1,7 @@
 <template>
   <AppLayout>
-    <div class="space-y-4">
+    <TablePageLayout>
+      <template #filters>
       <!-- 搜索和筛选工具栏 -->
       <div class="flex items-center gap-2 sm:justify-between">
         <div class="flex min-w-0 flex-1 flex-nowrap items-center gap-2">
@@ -8,7 +9,7 @@
             <input v-model="orderSearch" type="text" :placeholder="t('payment.admin.searchOrders')" class="input" @input="debounceLoadOrders" />
           </div>
           <div ref="filterDropdownRef" class="relative shrink-0">
-            <button type="button" class="btn btn-secondary relative h-11 w-11 p-0" :aria-expanded="showFilterDropdown" :aria-label="t('common.filter')" :title="t('common.filter')" @click="showFilterDropdown = !showFilterDropdown">
+            <button type="button" class="btn btn-secondary relative h-9 w-9 p-0" :aria-expanded="showFilterDropdown" :aria-label="t('common.filter')" :title="t('common.filter')" @click="showFilterDropdown = !showFilterDropdown">
               <Icon name="filter" size="sm" />
               <span v-if="activeFilterCount > 0" class="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-100 px-1.5 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">{{ activeFilterCount }}</span>
             </button>
@@ -28,15 +29,17 @@
         <button
           @click="loadOrders"
           :disabled="ordersLoading"
-          class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+          class="btn btn-secondary h-9 w-9 shrink-0 p-0"
           :title="t('common.refresh')"
         >
           <Icon name="refresh" size="md" :class="ordersLoading ? 'animate-spin' : ''" />
         </button>
       </div>
+      </template>
 
-      <!-- Table -->
-      <OrderTable :orders="orders" :loading="ordersLoading" show-user>
+      <template #table>
+        <!-- 订单表格复用与 API Keys 相同的 TablePageLayout/DataTable 容器，订单字段和操作仍由本组件定制。 -->
+        <OrderTable :orders="orders" :loading="ordersLoading" show-user>
         <template #actions="{ row }">
           <div class="flex items-center gap-1">
             <button @click="showOrderDetail(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-600">
@@ -80,9 +83,13 @@
             </button>
           </div>
         </template>
-      </OrderTable>
-      <Pagination v-if="orderPagination.total > 0" :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.page_size" @update:page="handleOrderPageChange" @update:pageSize="handleOrderPageSizeChange" />
-    </div>
+        </OrderTable>
+      </template>
+
+      <template #pagination>
+        <Pagination v-if="orderPagination.total > 0" :page="orderPagination.page" :total="orderPagination.total" :page-size="orderPagination.page_size" @update:page="handleOrderPageChange" @update:pageSize="handleOrderPageSizeChange" />
+      </template>
+    </TablePageLayout>
 
     <!-- Order Detail Dialog -->
     <BaseDialog :show="showDetailDialog" :title="t('payment.admin.orderDetail')" width="wide" @close="showDetailDialog = false">
@@ -191,6 +198,7 @@ import { formatOrderDateTime } from '@/components/payment/orderUtils'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import type { PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'

@@ -4,11 +4,12 @@
       <!-- 品牌固定在全局顶栏，避免与侧栏和页面标题争夺层级。 -->
       <div class="flex min-w-0 shrink-0 items-center gap-2 sm:gap-4">
         <button
-          @click="toggleMobileSidebar"
-          class="btn-ghost btn-icon lg:hidden"
-          :aria-label="t('common.toggleMenu')"
+          @click="handlePrimaryNavigation"
+          :class="['btn-ghost btn-icon', !isCreativeStudio && 'lg:hidden']"
+          :aria-label="isCreativeStudio ? t('creative.canvas.backToDashboard') : t('common.toggleMenu')"
+          :title="isCreativeStudio ? t('creative.canvas.backToDashboard') : t('common.toggleMenu')"
         >
-          <Icon name="menu" size="md" />
+          <Icon :name="isCreativeStudio ? 'home' : 'menu'" size="md" />
         </button>
 
         <!-- 版本标签与首页链接分离，避免按钮嵌套在链接内触发错误跳转。 -->
@@ -244,7 +245,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
@@ -258,6 +259,7 @@ import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -266,6 +268,7 @@ const { formatBalanceAmount } = useBalanceDisplay()
 const { isDark, toggleTheme } = useTheme()
 
 const user = computed(() => authStore.user)
+const isCreativeStudio = computed(() => route.path === '/creative')
 const homePath = '/home'
 const siteName = computed(() => appStore.siteName)
 const siteLogo = computed(() => sanitizeUrl(appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
@@ -328,6 +331,14 @@ const displayName = computed(() => {
 
 function toggleMobileSidebar() {
   appStore.toggleMobileSidebar()
+}
+
+function handlePrimaryNavigation() {
+  if (isCreativeStudio.value) {
+    void router.push('/dashboard')
+    return
+  }
+  toggleMobileSidebar()
 }
 
 function toggleDropdown() {

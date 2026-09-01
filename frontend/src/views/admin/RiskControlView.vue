@@ -12,7 +12,7 @@
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.description') }}</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
-            <button type="button" class="btn btn-secondary h-11 w-11 shrink-0 p-0" :disabled="statusLoading" :title="t('admin.riskControl.refreshStatus')" @click="loadStatus(false)">
+            <button type="button" class="btn btn-secondary h-9 w-9 shrink-0 p-0" :disabled="statusLoading" :title="t('admin.riskControl.refreshStatus')" @click="loadStatus(false)">
               <Icon name="refresh" size="sm" :class="statusLoading ? 'animate-spin' : ''" />
             </button>
             <button type="button" class="btn btn-primary inline-flex items-center gap-2" @click="openSettings">
@@ -493,7 +493,7 @@
               v-for="tab in settingsTabs"
               :key="tab.id"
               type="button"
-              class="inline-flex whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+              class="inline-flex h-9 items-center whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
               :class="activeSettingsTab === tab.id ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white'"
               @click="activeSettingsTab = tab.id"
             >
@@ -591,7 +591,7 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
+              <div class="grid grid-cols-1 items-start gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
                 <div class="space-y-3">
                   <div class="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-dark-700 dark:bg-dark-900/30 sm:flex-row sm:items-center sm:justify-between">
                     <div class="text-xs leading-5 text-gray-500 dark:text-gray-400">
@@ -721,7 +721,7 @@
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.apiKeyHealthEmptyHint') }}</p>
                   </div>
                   <div v-else class="space-y-2">
-                    <div class="space-y-2" :class="apiKeyRowsExpanded ? 'max-h-72 overflow-y-auto pr-1' : ''">
+                    <div class="space-y-2" :class="apiKeyRowsExpanded ? 'overflow-visible' : ''">
                       <div
                         v-for="(row, index) in visibleApiKeyRows"
                         :key="apiKeyRowKey(row, index)"
@@ -1025,12 +1025,12 @@
                   <input
                     v-model.trim="flaggedHashInput"
                     type="text"
-                    class="input font-mono text-sm"
+                    class="input h-9 min-w-0 flex-1 font-mono text-sm"
                     :placeholder="t('admin.riskControl.flaggedHashPlaceholder')"
                   />
                   <button
                     type="button"
-                    class="btn btn-secondary inline-flex items-center justify-center gap-2"
+                    class="btn btn-secondary h-9 shrink-0 whitespace-nowrap px-3 sm:min-w-[9rem]"
                     :disabled="hashActionLoading || !isFlaggedHashInputValid"
                     @click="deleteFlaggedHash"
                   >

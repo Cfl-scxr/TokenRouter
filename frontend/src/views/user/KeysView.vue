@@ -8,13 +8,13 @@
               <SearchInput
                 v-model="filterSearch"
                 :placeholder="t('keys.searchPlaceholder')"
-                class="min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-48 xl:w-64"
+                class="min-w-0 flex-1 sm:w-56 sm:flex-none lg:w-48 xl:w-64 [&>input]:h-9 [&>input]:min-h-0"
                 @search="onFilterChange"
               />
               <div ref="filterDropdownRef" class="relative shrink-0">
                 <button
                   type="button"
-                  class="btn btn-secondary relative h-11 w-11 p-0"
+                  class="btn btn-secondary relative h-9 w-9 p-0"
                   :aria-expanded="showFilterDropdown"
                   :aria-label="t('common.filter')"
                   :title="t('common.filter')"
@@ -25,7 +25,7 @@
                     {{ activeFilterCount }}
                   </span>
                 </button>
-                <div v-show="showFilterDropdown" class="absolute left-auto right-0 top-full z-[60] mt-2 w-[min(32rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-dark-600 dark:bg-dark-900" @click.stop>
+                <div v-show="showFilterDropdown" class="absolute left-0 right-auto top-full z-[60] mt-2 w-[min(32rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-dark-600 dark:bg-dark-900 max-[639px]:left-auto max-[639px]:right-0" @click.stop>
                   <div class="mb-3 flex items-center justify-between">
                     <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('common.filter') }}</div>
                     <button v-if="activeFilterCount > 0" type="button" class="text-xs font-medium text-primary-600 dark:text-primary-400" @click="resetKeyFilters">
@@ -49,7 +49,7 @@
               <button
                 @click="loadApiKeys"
                 :disabled="loading"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('common.refresh')"
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
@@ -57,7 +57,7 @@
               <div class="relative" ref="columnDropdownRef">
                 <button
                   @click.stop="showColumnDropdown = !showColumnDropdown"
-                  class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                  class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                   :title="t('keys.columnSettings')"
                 >
                   <Icon name="grid" size="md" />
@@ -84,7 +84,7 @@
                 </div>
               </div>
               <ScopeDropdown v-if="teamFeatureEnabled" v-model="scope" @change="onScopeChange" />
-              <button @click="openCreateModal" class="btn btn-primary" data-tour="keys-create-btn">
+              <button @click="openCreateModal" class="btn btn-primary h-9" data-tour="keys-create-btn">
                 <Icon name="plus" size="md" class="mr-2" />
                 {{ t('keys.createKey') }}
               </button>
@@ -486,7 +486,7 @@
       width="normal"
       @close="closeModals"
     >
-      <form id="key-form" @submit.prevent="handleSubmit" class="min-w-0 max-w-full space-y-5">
+      <form id="key-form" @submit.prevent="handleSubmit" class="key-form-controls min-w-0 max-w-full space-y-5">
         <div>
           <label class="input-label">{{ t('keys.nameLabel') }}</label>
           <input
@@ -714,7 +714,7 @@
             </div>
             <button
               type="button"
-              class="flex h-10 w-10 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
+              class="flex h-9 w-9 items-center justify-center rounded text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20"
               :title="t('common.delete')"
               :aria-label="t('common.delete')"
               :data-test="`model-mapping-remove-${index}`"
@@ -870,7 +870,7 @@
             <div v-if="showEditModal && selectedKey && selectedKey.quota > 0">
               <label class="input-label">{{ t('keys.quotaUsed') }}</label>
               <div class="flex items-center gap-2">
-                <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700">
+                <div class="flex-1 h-9 rounded-lg bg-gray-100 px-3 py-1.5 dark:bg-dark-700">
                   <span class="font-medium text-gray-900 dark:text-white">
                     {{ formatBalanceAmount(selectedKey.quota_used, { fractionDigits: 4 }) }}
                   </span>
@@ -932,7 +932,7 @@
               <!-- Usage info (edit mode only) -->
               <div v-if="showEditModal && selectedKey && selectedKey.rate_limit_5h > 0" class="mt-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700 text-sm">
+                  <div class="flex-1 h-9 rounded-lg bg-gray-100 px-3 py-1.5 text-sm dark:bg-dark-700">
                     <span :class="[
                       'font-medium',
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h ? 'text-red-500' :
@@ -978,7 +978,7 @@
               <!-- Usage info (edit mode only) -->
               <div v-if="showEditModal && selectedKey && selectedKey.rate_limit_1d > 0" class="mt-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700 text-sm">
+                  <div class="flex-1 h-9 rounded-lg bg-gray-100 px-3 py-1.5 text-sm dark:bg-dark-700">
                     <span :class="[
                       'font-medium',
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d ? 'text-red-500' :
@@ -1024,7 +1024,7 @@
               <!-- Usage info (edit mode only) -->
               <div v-if="showEditModal && selectedKey && selectedKey.rate_limit_7d > 0" class="mt-2">
                 <div class="flex items-center gap-2">
-                  <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700 text-sm">
+                  <div class="flex-1 h-9 rounded-lg bg-gray-100 px-3 py-1.5 text-sm dark:bg-dark-700">
                     <span :class="[
                       'font-medium',
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d ? 'text-red-500' :
@@ -1141,14 +1141,14 @@
       </form>
       <template #footer>
         <div class="flex justify-end gap-3">
-          <button @click="closeModals" type="button" class="btn btn-secondary">
+          <button @click="closeModals" type="button" class="btn btn-secondary h-9 py-1.5">
             {{ t('common.cancel') }}
           </button>
           <button
             form="key-form"
             type="submit"
             :disabled="submitting"
-            class="btn btn-primary"
+            class="btn btn-primary h-9 py-1.5"
             data-tour="key-form-submit"
           >
             <svg
@@ -2906,3 +2906,24 @@ onUnmounted(() => {
   if (resetTimer) clearInterval(resetTimer)
 })
 </script>
+
+<style scoped>
+/* 创建密钥弹窗的单行控件统一为 36px，多行文本域保留自然高度。 */
+.key-form-controls :deep(input.input),
+.key-form-controls :deep(.select-trigger),
+.key-form-controls :deep(.btn) {
+  height: 2.25rem;
+  min-height: 0;
+}
+
+.key-form-controls :deep(input.input),
+.key-form-controls :deep(.btn) {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+}
+
+.key-form-controls :deep(.select-trigger) {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+}
+</style>

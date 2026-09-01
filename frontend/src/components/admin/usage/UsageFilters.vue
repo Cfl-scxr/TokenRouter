@@ -5,7 +5,7 @@
         <div ref="filterPanelRef" class="relative shrink-0">
           <button
             type="button"
-            class="btn btn-secondary relative h-11 w-11 p-0"
+            class="btn btn-secondary relative h-9 w-9 p-0"
             :aria-expanded="showFilterDropdown"
             :aria-label="t('common.filter')"
             :title="t('common.filter')"
@@ -188,15 +188,15 @@
         </div>
 
         <div v-if="showActions" class="flex flex-wrap items-center justify-end gap-2">
-          <button type="button" @click="$emit('refresh')" class="btn btn-secondary h-11 w-11 p-0" :title="t('common.refresh')">
+          <button type="button" @click="$emit('refresh')" class="btn btn-secondary h-9 w-9 p-0" :title="t('common.refresh')">
             <Icon name="refresh" size="sm" />
           </button>
           <slot name="after-reset" />
           <template v-if="mode === 'usage'">
-            <button type="button" @click="$emit('cleanup')" class="btn btn-danger h-11 whitespace-nowrap px-3 sm:px-4">
+            <button type="button" @click="$emit('cleanup')" class="btn btn-danger h-9 whitespace-nowrap px-3 sm:px-4">
               {{ t('admin.usage.cleanup.button') }}
             </button>
-            <button type="button" @click="$emit('export')" :disabled="exporting" class="btn btn-primary h-11 whitespace-nowrap px-3 sm:px-4">
+            <button type="button" @click="$emit('export')" :disabled="exporting" class="btn btn-primary h-9 whitespace-nowrap px-3 sm:px-4">
               {{ t('usage.exportExcel') }}
             </button>
           </template>

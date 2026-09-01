@@ -7,7 +7,7 @@
             <div ref="filterPanelRef" class="relative shrink-0">
               <button
                 type="button"
-                class="btn btn-secondary relative h-11 w-11 p-0"
+                class="btn btn-secondary relative h-9 w-9 p-0"
                 :aria-expanded="showFilterDropdown"
                 :aria-label="t('common.filter')"
                 :title="t('common.filter')"
@@ -83,10 +83,10 @@
             </div>
 
             <div class="flex flex-wrap items-center justify-end gap-2">
-              <button type="button" class="btn btn-primary h-11 whitespace-nowrap px-3 sm:px-4" :disabled="loading" @click="search">
+              <button type="button" class="btn btn-primary h-9 whitespace-nowrap px-3 sm:px-4" :disabled="loading" @click="search">
                 {{ t('common.search') }}
               </button>
-              <button type="button" class="btn btn-danger h-11 whitespace-nowrap px-3 sm:px-4" @click="openClearDialog">
+              <button type="button" class="btn btn-danger h-9 whitespace-nowrap px-3 sm:px-4" @click="openClearDialog">
                 <Icon name="trash" size="sm" class="mr-1.5" />
                 {{ t('admin.audit.clearAll') }}
               </button>

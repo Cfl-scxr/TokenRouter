@@ -20,7 +20,7 @@
         >
           <Icon name="cog" size="md" />
         </button>
-        <!-- 向下展开的设置面板：返回仪表盘 / 清空画布 / 清空本机创作数据 -->
+        <!-- 向下展开的设置面板：清空画布 / 清空本机创作数据 -->
         <Transition name="settings-panel">
           <div
             v-if="settingsOpen"
@@ -29,14 +29,6 @@
             <button
               type="button"
               class="flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
-              @click="onBackToDashboard"
-            >
-              <Icon name="home" size="sm" />
-              {{ t('creative.canvas.backToDashboard') }}
-            </button>
-            <button
-              type="button"
-              class="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-md border border-primary-900/10 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700 dark:hover:text-gray-100"
               @click="onResetCanvas"
             >
               <Icon name="trash" size="sm" />
@@ -103,12 +95,11 @@
  * - 输入框固定底部居中（早期试过跟随选中图片，缩放场景下位置不稳定，按用户要求回退为固定）
  * - 生成时从画布收集输入：edit/inpaint 取当前选中图片的原始 blob，inpaint 另取画笔 mask 导出
  * - 注册画布桥接：收割成功的输出自动上板；历史里的输出可一键导入画布
- * - 左上角设置（清空画布 / 清空本机创作数据）、右上角历史、顶部工具栏（上传 / 下载 / 局部重绘画笔组 / 删除）
+ * - 顶栏返回控制台，左上角设置（清空画布 / 清空本机创作数据）、右上角历史、顶部工具栏（上传 / 下载 / 局部重绘画笔组 / 删除）
  * 图片本体只存当前浏览器（IndexedDB），生成时才把所选素材发给模型供应商。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -120,7 +111,6 @@ import { useCreativeStudio } from '@/composables/useCreativeStudio'
 import { useAppStore } from '@/stores'
 
 const { t } = useI18n()
-const router = useRouter()
 const appStore = useAppStore()
 const studio = useCreativeStudio()
 
@@ -320,12 +310,6 @@ async function onGenerate(): Promise<void> {
 
 function onCanvasError(message: string): void {
   studio.error.value = message
-}
-
-// 设置弹层里的返回仪表盘入口：收起弹层并跳转
-function onBackToDashboard(): void {
-  settingsOpen.value = false
-  void router.push('/dashboard')
 }
 
 // 设置弹层里的清空画布入口：收起弹层并清空画布全部对象

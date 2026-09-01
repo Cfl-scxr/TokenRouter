@@ -67,12 +67,13 @@
             <!-- Filters -->
             <div ref="filterDropdownRef" class="relative shrink-0">
               <button
+                ref="filterDropdownButtonRef"
                 type="button"
-                class="btn btn-secondary relative h-11 w-11 p-0"
+                class="btn btn-secondary relative h-9 w-9 p-0"
                 :aria-expanded="showFilterDropdown"
                 :aria-label="t('common.filter')"
                 :title="t('common.filter')"
-                @click="showFilterDropdown = !showFilterDropdown"
+                @click="toggleFilterDropdown"
               >
                 <Icon name="filter" size="sm" />
                 <span
@@ -83,11 +84,13 @@
                 </span>
               </button>
 
-              <div
-                v-if="showFilterDropdown"
-                class="absolute left-auto right-0 top-full z-[60] mt-2 w-[min(32rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white shadow-xl dark:border-dark-600 dark:bg-dark-900 sm:left-0 sm:right-auto"
-                @click.stop
-              >
+              <Teleport to="body">
+                <div
+                  v-if="showFilterDropdown"
+                  class="fixed z-[60] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl dark:border-dark-600 dark:bg-dark-900"
+                  :style="filterDropdownStyle"
+                  @click.stop
+                >
                 <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-dark-700">
                   <div class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('common.filter') }}</div>
                   <button
@@ -113,7 +116,8 @@
                     <Select v-model="filters.platform" :options="platformFilterOptions" :placeholder="t('admin.subscriptions.allPlatforms')" @change="applyFilters" />
                   </div>
                 </div>
-              </div>
+                </div>
+              </Teleport>
             </div>
           </div>
 
@@ -122,7 +126,7 @@
             <button
               @click="loadSubscriptions"
               :disabled="loading"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('common.refresh')"
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
@@ -131,7 +135,7 @@
             <div class="relative" ref="columnDropdownRef">
               <button
                 @click="showColumnDropdown = !showColumnDropdown"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('admin.users.columnSettings')"
               >
                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
@@ -180,12 +184,12 @@
             </div>
             <button
               @click="showGuideModal = true"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('admin.subscriptions.guide.showGuide')"
             >
               <Icon name="questionCircle" size="md" />
             </button>
-            <button @click="showAssignModal = true" class="btn btn-primary h-11 whitespace-nowrap">
+            <button @click="showAssignModal = true" class="btn btn-primary h-9 whitespace-nowrap">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.subscriptions.assignSubscription') }}
             </button>
@@ -766,7 +770,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -788,6 +792,7 @@ import UserAvatar from '@/components/common/UserAvatar.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
+import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import {
   getRemainingDurationParts,
   getRemainingExpiryDuration,
@@ -953,6 +958,45 @@ const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const showFilterDropdown = ref(false)
 const filterDropdownRef = ref<HTMLElement | null>(null)
+const filterDropdownButtonRef = ref<HTMLElement | null>(null)
+const filterDropdownPosition = reactive({
+  top: null as number | null,
+  bottom: null as number | null,
+  left: 16,
+  width: 512,
+  maxHeight: 0
+})
+const filterDropdownStyle = computed(() => ({
+  top: filterDropdownPosition.top == null ? 'auto' : `${filterDropdownPosition.top}px`,
+  bottom: filterDropdownPosition.bottom == null ? 'auto' : `${filterDropdownPosition.bottom}px`,
+  left: `${filterDropdownPosition.left}px`,
+  width: `${filterDropdownPosition.width}px`,
+  maxHeight: `${filterDropdownPosition.maxHeight}px`
+}))
+
+// 过滤面板挂载到 body 后按触发按钮重新定位，确保桌面端和窄屏都不越界。
+const updateFilterDropdownPosition = () => {
+  if (!showFilterDropdown.value) return
+  const trigger = filterDropdownButtonRef.value
+  if (!trigger) return
+  Object.assign(
+    filterDropdownPosition,
+    getFloatingPanelPosition(
+      trigger.getBoundingClientRect(),
+      document.documentElement.clientWidth || window.innerWidth,
+      window.innerHeight,
+      { maxWidth: 512, mobileBreakpoint: 768 }
+    )
+  )
+}
+
+const toggleFilterDropdown = async () => {
+  showFilterDropdown.value = !showFilterDropdown.value
+  if (showFilterDropdown.value) {
+    await nextTick()
+    updateFilterDropdownPosition()
+  }
+}
 
 // Filter options
 const statusOptions = computed(() => [
@@ -1536,10 +1580,14 @@ onMounted(() => {
   loadSubscriptions()
   loadPlans()
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('resize', updateFilterDropdownPosition)
+  window.addEventListener('scroll', updateFilterDropdownPosition, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('resize', updateFilterDropdownPosition)
+  window.removeEventListener('scroll', updateFilterDropdownPosition, true)
   if (filterUserSearchTimeout) {
     clearTimeout(filterUserSearchTimeout)
   }

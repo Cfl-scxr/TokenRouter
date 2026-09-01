@@ -27,7 +27,7 @@
               <button
                 type="button"
                 @click="showFilterDropdown = !showFilterDropdown"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('admin.users.filterSettings')"
                 :aria-label="t('admin.users.filterSettings')"
               >
@@ -169,7 +169,7 @@
               <button
                 @click="loadUsers"
                 :disabled="loading"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('common.refresh')"
               >
                 <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
@@ -178,7 +178,7 @@
               <div class="relative" ref="columnDropdownRef">
                 <button
                   @click="showColumnDropdown = !showColumnDropdown"
-                  class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                  class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                   :title="t('admin.users.columnSettings')"
                 >
                   <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
@@ -218,7 +218,7 @@
               <!-- Attributes Config Button -->
               <button
                 @click="showAttributesModal = true"
-                class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+                class="btn btn-secondary h-9 w-9 shrink-0 p-0"
                 :title="t('admin.users.attributes.configButton')"
               >
                 <Icon name="cog" size="sm" />
@@ -228,7 +228,7 @@
 
             <button
               v-if="selectedCount > 0"
-              class="btn btn-secondary h-11 flex-none whitespace-nowrap px-3 md:flex-initial"
+              class="btn btn-secondary h-9 flex-none whitespace-nowrap px-3 md:flex-initial"
               data-test="bulk-edit-limits"
               @click="showBulkEditModal = true"
             >
@@ -237,7 +237,7 @@
             </button>
 
             <!-- Create User Button (full width on mobile, auto width on desktop) -->
-            <button @click="showCreateModal = true" class="btn btn-primary h-11 flex-none whitespace-nowrap px-3 md:flex-initial">
+            <button @click="showCreateModal = true" class="btn btn-primary h-9 flex-none whitespace-nowrap px-3 md:flex-initial">
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.users.createUser') }}
             </button>

@@ -91,6 +91,12 @@ describe('global header and sidebar hierarchy', () => {
     expect(componentSource).not.toContain('fixed inset-0 z-30 bg-black/50 lg:hidden')
   })
 
+  it('keeps the scrolling content below the fixed global header', () => {
+    // 主内容不能与顶栏使用同级 z-index，否则滚动时后渲染内容会盖住顶栏。
+    expect(layoutSource).toContain('class="relative z-10 min-h-screen min-w-0 pt-14 transition-all duration-300"')
+    expect(layoutSource).not.toContain('lg:z-50')
+  })
+
   it('fades the mobile overlay in and out', () => {
     // 遮罩应渐进显示和隐藏，避免打开侧栏时页面突然变暗。
     expect(componentSource).toContain('.fade-enter-active')

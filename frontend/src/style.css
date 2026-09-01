@@ -283,9 +283,9 @@
   /* ============ 按钮样式 ============ */
   .btn {
     @apply inline-flex items-center justify-center gap-2;
-    @apply rounded-control px-4 py-2.5 text-sm font-medium;
-    /* 工具栏控件统一 44px 高，避免输入框、下拉和按钮出现错位。 */
-    @apply min-h-11;
+    @apply rounded-control px-4 py-1.5 text-sm font-medium;
+    /* 常规按钮与输入控件共用 36px 基线，保持工具栏在不同页面对齐。 */
+    @apply min-h-9;
     @apply shadow-none;
     @apply transition-all duration-200 ease-out;
     @apply focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:ring-offset-2;
@@ -382,14 +382,14 @@
   }
 
   .btn-icon {
-    @apply rounded-control p-2.5;
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-control p-0;
   }
 
   /* ============ 输入框样式 ============ */
   .input {
-    @apply w-full rounded-control px-4 py-2.5 text-sm;
-    /* 过滤栏输入框与按钮保持同一基线，文本域仍可由 rows 自然撑开。 */
-    @apply min-h-11;
+    @apply w-full rounded-control px-4 py-1.5 text-sm;
+    /* 单行输入框与按钮保持同一基线，文本域仍可由 rows 自然撑开。 */
+    @apply min-h-9;
     @apply bg-white dark:bg-dark-950;
     @apply border border-primary-900/10 dark:border-dark-600;
     @apply text-dark-950 dark:text-dark-50;
@@ -785,7 +785,7 @@
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-control py-2.5;
+    @apply flex h-9 items-center gap-3 rounded-control py-1.5;
     @apply overflow-hidden;
     @apply text-sm font-medium;
     @apply text-primary-900 dark:text-dark-100;

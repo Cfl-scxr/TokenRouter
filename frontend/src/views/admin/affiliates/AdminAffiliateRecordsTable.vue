@@ -13,7 +13,7 @@
               v-model:end-date="dateRangeEnd"
               @change="handleDateRangeChange"
             />
-            <button class="btn btn-secondary h-11 w-11 shrink-0 p-0" :disabled="loading" :title="t('common.refresh')" @click="loadRecords">
+            <button class="btn btn-secondary h-9 w-9 shrink-0 p-0" :disabled="loading" :title="t('common.refresh')" @click="loadRecords">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
           </div>

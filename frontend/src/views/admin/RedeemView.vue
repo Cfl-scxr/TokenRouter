@@ -15,7 +15,7 @@
             <div ref="filterDropdownRef" class="relative shrink-0">
               <button
                 type="button"
-                class="btn btn-secondary relative h-11 w-11 p-0"
+                class="btn btn-secondary relative h-9 w-9 p-0"
                 :aria-expanded="showFilterDropdown"
                 :aria-label="t('common.filter')"
                 :title="t('common.filter')"
@@ -46,7 +46,7 @@
             <button
               @click="loadCodes"
               :disabled="loading"
-              class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+              class="btn btn-secondary h-9 w-9 shrink-0 p-0"
               :title="t('common.refresh')"
             >
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />

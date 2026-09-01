@@ -3,7 +3,7 @@
     <template #page-heading-actions>
       <button
         type="button"
-        class="btn btn-secondary h-11 w-11 shrink-0 p-0"
+        class="btn btn-secondary h-9 w-9 shrink-0 p-0"
         :disabled="loadingCharts || loading"
         :title="t('common.refresh')"
         @click="refreshAll"

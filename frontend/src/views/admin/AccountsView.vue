@@ -25,7 +25,7 @@
                 <button
                   ref="autoRefreshButtonRef"
                   @click="toggleAutoRefreshDropdown"
-                  class="btn btn-secondary h-11 w-11 shrink-0 justify-center p-0"
+                  class="btn btn-secondary h-9 w-9 shrink-0 justify-center p-0"
                   :title="autoRefreshButtonTitle"
                 >
                   <Icon name="clock" size="sm" :class="autoRefreshEnabled ? 'text-primary-500' : ''" />
@@ -62,7 +62,7 @@
                 <button
                   ref="accountToolsButtonRef"
                   @click="toggleAccountToolsDropdown"
-                  class="btn btn-secondary h-11 w-11 justify-center p-0 lg:h-auto lg:w-auto lg:px-3 lg:py-2.5"
+                  class="btn btn-secondary h-9 w-9 justify-center p-0 lg:w-auto lg:px-3 lg:py-1.5"
                   :title="t('admin.accounts.moreActions')"
                   :aria-expanded="showAccountToolsDropdown"
                 >
