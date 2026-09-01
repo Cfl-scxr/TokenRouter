@@ -166,7 +166,7 @@ const kindBadgeClass = (kind: string) => {
           </div>
           <button
             type="button"
-            class="btn btn-secondary btn-sm"
+            class="btn btn-secondary btn-sm h-9"
             @click="fetchData"
           >
             {{ t('common.refresh') }}
