@@ -137,6 +137,9 @@
 
 迁移完成后，认证缓存版本会使旧快照失效并重建，避免缓存缺少结算字段。SQL 列本身与旧二进制兼容，但在同一部署中不能让旧实例继续处理用户新配置的指定订阅或仅余额 Key；应先完成全部后端实例升级，再在面板开放该配置。升级后至少抽样验证个人和团队 Key 的订阅选择、套餐受限分组拒绝、指定订阅额度耗尽不扣余额、仅余额不使用订阅，以及批量图片提交后修改 Key 配置仍按提交快照冻结/结算/释放。
 
+<a id="api_key_billing_cache_invalidation"></a>
+迁移 `258_extend_api_key_auth_cache_invalidation.sql` 通过 `CREATE OR REPLACE FUNCTION` 扩展既有 API Key 鉴权缓存 outbox 触发器，将 `billing_mode` 和 `preferred_subscription_id` 的变化纳入失效条件。它依赖迁移 237 已存在的列，不修改历史迁移文件；旧实例可继续运行，但完成新版本升级后应确认自动改绑产生的 Key 快照在多实例间及时失效，并抽样检查 outbox 只保存哈希而不保存明文 Key。
+
 ### 自研异步图片任务下线
 
 包含迁移 `234_remove_async_image_storage_setting.sql` 的版本会立即移除自研 OpenAI/Grok 异步图片路由、后台对象存储设置和 `image_storage_config` 数据库记录。这是破坏性升级，不提供任务排空、兼容查询或旧任务恢复。发布 tag notes 必须明确列出这项变化。

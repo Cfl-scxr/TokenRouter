@@ -229,7 +229,16 @@ marketplace: {
     usageOf: '{used} of {limit}',
     groupAccess: 'Accessible groups',
     allGroups: 'All groups',
-    restrictedGroups: 'Restricted groups'
+    restrictedGroups: 'Restricted groups',
+    revoke: 'Revoke plan',
+    revokeTitle: 'Revoke exhausted plan',
+    revokeConfirmWithReplacement:
+      'This plan has exhausted its highest quota. Revoking it will take effect immediately, activate the next queued pack, and automatically rebind keys explicitly using this subscription. This action is not refundable and cannot be undone by you.',
+    revokeConfirmWithoutReplacement:
+      'This plan has exhausted its highest quota. Revoking it will end access immediately. There is no queued pack to replace it, and keys explicitly using this subscription will no longer be able to use subscription billing. This action is not refundable and cannot be undone by you.',
+    revokeSuccessWithReplacement: 'Plan revoked and {count} API key(s) rebound to the next pack.',
+    revokeSuccess: 'Plan revoked successfully. API keys rebound: 0.',
+    revokeFailed: 'Failed to revoke the plan. Its status or quota may have changed; please try again.'
   },
 // Onboarding Tour
   onboarding: {

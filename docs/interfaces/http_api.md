@@ -52,6 +52,13 @@ RequestLogger
 | `/backend-api/codex/*` | TokenRouter API Key | Codex Responses、Realtime 与 sideband 兼容入口 |
 | `/api/v1/pages/*` 等 page routes | 按页面类型为用户或管理员 JWT | 服务端生成/读取的 pricing、账单或管理页面数据 |
 
+<a id="subscription_self_revoke_api"></a>
+用户订阅页面提供一个受额度条件约束的自助撤销接口：
+
+- `POST /api/v1/subscriptions/:id/revoke` 需要用户 JWT。服务端只接受当前用户本人、当前 `active` 且最高层有限额度已耗尽的订阅；成功时在事务中撤销当前记录、提前接续同套餐的下一份 pending 记录，并自动改绑显式订阅 Key。
+- 成功响应的 `data` 为 `{ revoked_subscription_id, replacement_subscription_id, rebound_api_key_count }`；没有接续记录时 `replacement_subscription_id` 为 `null`，Key 改绑数量为 `0`。
+- 越权或不存在的订阅返回 `SUBSCRIPTION_NOT_FOUND`；记录不是当前 active 返回 `SUBSCRIPTION_NOT_ACTIVE`（409）；最高层额度仍可用或套餐无限返回 `SUBSCRIPTION_QUOTA_NOT_EXHAUSTED`（409）。撤销不触发退款，也不提供用户侧恢复接口。
+
 <a id="payment_admin_recovery"></a>
 ## 支付管理恢复
 

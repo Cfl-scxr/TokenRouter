@@ -226,7 +226,16 @@ marketplace: {
     usageOf: '已用 {used} / {limit}',
     groupAccess: '可访问分组',
     allGroups: '全部分组',
-    restrictedGroups: '受限分组'
+    restrictedGroups: '受限分组',
+    revoke: '撤销套餐',
+    revokeTitle: '撤销已耗尽套餐',
+    revokeConfirmWithReplacement:
+      '该套餐的最高层额度已耗尽。撤销后当前套餐会立即失效，下一份待生效套餐会立即启用，并自动将明确使用此订阅的 API Key 改绑到接续套餐。此操作不退款，且您无法自行恢复。',
+    revokeConfirmWithoutReplacement:
+      '该套餐的最高层额度已耗尽。撤销后当前套餐会立即失效，且没有待生效套餐可以接续；明确使用此订阅的 API Key 将无法继续使用订阅结算。此操作不退款，且您无法自行恢复。',
+    revokeSuccessWithReplacement: '套餐已撤销，{count} 个 API Key 已改绑到接续套餐。',
+    revokeSuccess: '套餐已成功撤销，改绑 API Key 数量：0。',
+    revokeFailed: '撤销套餐失败，套餐状态或额度可能已变化，请刷新后重试。'
   },
 // Onboarding Tour
   onboarding: {
