@@ -262,7 +262,7 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 				newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream),
 				passthroughLifecycleAccount(),
 				func(c *gin.Context) *OpenAIWSIngressHooks {
-					return &OpenAIWSIngressHooks{AfterTurn: func(_ int, _ *OpenAIForwardResult, _ error) {
+					return &OpenAIWSIngressHooks{AfterTurn: func(_ OpenAIWSTurnCapture) {
 						afterTurnCalls.Add(1)
 						if mark := GetOpsCyberPolicy(c); mark != nil {
 							select {
@@ -322,7 +322,7 @@ func TestPassthroughLifecycle_NonCyberFailureKeepsAccountSideEffects(t *testing.
 		svc,
 		account,
 		func(c *gin.Context) *OpenAIWSIngressHooks {
-			return &OpenAIWSIngressHooks{AfterTurn: func(_ int, _ *OpenAIForwardResult, _ error) {
+			return &OpenAIWSIngressHooks{AfterTurn: func(_ OpenAIWSTurnCapture) {
 				markSeen <- GetOpsCyberPolicy(c)
 			}}
 		},
