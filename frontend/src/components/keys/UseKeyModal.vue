@@ -1017,27 +1017,25 @@ windows_wsl_setup_acknowledged = true
 name = "OpenAI"
 base_url = "${baseUrl}"
 wire_api = "responses"${websocketProviderConfig}
-${generateCodexProviderAuthConfig()}
+${generateCodexProviderAuthConfig(apiKey)}
 
 [features]
 ${websocketFeatureConfig}goals = true`
 
-  // auth.json content
-  const authContent = `{
-  "OPENAI_API_KEY": "${apiKey}"
-}`
-
-  return [
+  const files: FileConfig[] = [
     {
       path: `${configDir}/config.toml`,
       content: configContent,
       hint: t('keys.useKeyModal.openai.configTomlHint')
-    },
-    {
-      path: `${configDir}/auth.json`,
-      content: authContent
     }
   ]
+  if (codexAuthMode.value === 'legacy') {
+    files.push({
+      path: `${configDir}/auth.json`,
+      content: JSON.stringify({ OPENAI_API_KEY: apiKey }, null, 2)
+    })
+  }
+  return files
 }
 
 // 兼容 Responses 的非 OpenAI 平台使用独立 provider，避免触发 OpenAI 官方登录流程。
@@ -1142,13 +1140,19 @@ goals = true`
 }
 
 // generateCodexProviderAuthConfig 根据用户选择生成最小的 Codex provider 授权配置。
-function generateCodexProviderAuthConfig(): string {
+function generateCodexProviderAuthConfig(apiKey: string): string {
   if (codexAuthMode.value === 'api-key') {
     return `requires_openai_auth = false
+experimental_bearer_token = "${escapeTomlBasicString(apiKey)}"
 http_headers = { "x-openai-actor-authorization" = "local-image-extension" }`
   }
 
   return 'requires_openai_auth = true'
+}
+
+// escapeTomlBasicString 转义 TOML 基本字符串中的反斜杠和双引号。
+function escapeTomlBasicString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
 // 生成 Grok Build CLI 的完整端点、认证和模型配置。
