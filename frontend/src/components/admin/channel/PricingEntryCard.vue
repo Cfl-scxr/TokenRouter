@@ -159,7 +159,7 @@
             {{ t('admin.channels.form.defaultPrices', '默认价格（未命中区间时使用）') }}
             <span class="ml-1 font-normal text-gray-400">$/MTok</span>
           </label>
-          <div class="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-6">
+          <div class="pricing-default-grid mt-1 grid gap-2">
             <div>
               <label class="text-xs text-gray-400">{{ t('admin.channels.form.inputPrice', '输入') }}</label>
               <input :value="entry.input_price" @input="emitField('input_price', ($event.target as HTMLInputElement).value)"
@@ -477,6 +477,10 @@ async function onModelsUpdate(newModels: string[]) {
 </script>
 
 <style scoped>
+.pricing-default-grid {
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+
 .collapsible-content {
   display: grid;
   grid-template-rows: 1fr;
