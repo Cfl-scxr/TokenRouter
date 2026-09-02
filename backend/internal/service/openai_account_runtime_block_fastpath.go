@@ -206,7 +206,7 @@ func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamErrorInternal(
 		if s != nil && s.rateLimitService != nil {
 			_ = s.rateLimitService.HandleOpenAIImageCapabilityLoss(stateCtx, account, statusCode, responseBody)
 		}
-		return false
+		return UpstreamErrorDecision{Policy: ErrorPolicyNone}
 	}
 
 	if s == nil || account == nil {
