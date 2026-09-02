@@ -1669,7 +1669,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(ctx context.Context, resp *http.R
 				writeOpenAIPassthroughErrorEnvelope(c, http.StatusInternalServerError, resp.Header, "Upstream gateway error")
 				return nil, fmt.Errorf("upstream compact response failed: status=%d (not in custom error codes)", policyStatus)
 			}
-			if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(terminalPayload, msg)) {
+			if !IsResponseCommitted(c) && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(terminalPayload, msg)) {
 				markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
 				return nil, s.newOpenAIStreamPolicyFailoverError(
 					c, account, false, strings.TrimSpace(resp.Header.Get("x-request-id")), resp.Header,
