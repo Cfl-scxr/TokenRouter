@@ -1235,7 +1235,7 @@ func TestOpenAIWSConnPool_RecyclesUnsupportedIdlePingConnection(t *testing.T) {
 
 	accountID := int64(303)
 	ap := &openAIWSAccountPool{conns: make(map[string]*openAIWSConn)}
-	conn := newOpenAIWSConn("stale_unsupported_idle_ping", accountID, &openAIWSIdlePingUnsupportedConn{}, nil)
+	conn := newOpenAIWSConn("stale_unsupported_idle_ping", accountID, &openAIWSIdlePingUnsupportedConn{}, nil, nil, "")
 	conn.lastUsedNano.Store(time.Now().Add(-openAIWSConnIdleRecycleAfter - time.Second).UnixNano())
 	ap.conns[conn.id] = conn
 	pool.accounts.Store(accountID, ap)

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
@@ -52,6 +53,12 @@ func buildOpenAIResponsesURLForPlatform(platform, base string) string {
 		return buildOpenAIEndpointURL(base, "/responses")
 	}
 	return buildOpenAIResponsesURL(base)
+}
+
+// isOfficialOpenAIModelsBaseURL 仅识别官方 OpenAI 主机，避免兼容中继误用官方请求字段。
+func isOfficialOpenAIModelsBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && strings.EqualFold(u.Hostname(), "api.openai.com")
 }
 
 func shouldPreserveOpenAIResponsesNoneReasoningEffort(account *Account) bool {
