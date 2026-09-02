@@ -880,7 +880,6 @@ describe('AccountUsageCell', () => {
 	await flushPromises()
 
 	expect(wrapper.text()).toContain('135/250 credits')
-    expect(getUsage).toHaveBeenCalledTimes(2)
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {

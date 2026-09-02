@@ -185,6 +185,35 @@ func (s *OpenAIQuotaService) CachePostResetSnapshot(ctx context.Context, account
 	)
 }
 
+// buildOpenAIAutoResetUsageUpdates 将重置后 5 小时/7 天窗口写入账号缓存，
+// 使下一次列表查询直接展示新配额而无需再次访问上游。
+func buildOpenAIAutoResetUsageUpdates(usage *OpenAIQuotaUsage, now time.Time) map[string]any {
+	if usage == nil || usage.RateLimit == nil {
+		return nil
+	}
+	snapshot := &OpenAICodexUsageSnapshot{UpdatedAt: now.UTC().Format(time.RFC3339)}
+	applyWindow := func(window *OpenAIRateLimitWindow, primary bool) {
+		if window == nil {
+			return
+		}
+		used := window.UsedPercent
+		resetAfter := int(window.ResetAfterSeconds)
+		windowMinutes := int(window.LimitWindowSeconds / 60)
+		if primary {
+			snapshot.PrimaryUsedPercent = &used
+			snapshot.PrimaryResetAfterSeconds = &resetAfter
+			snapshot.PrimaryWindowMinutes = &windowMinutes
+		} else {
+			snapshot.SecondaryUsedPercent = &used
+			snapshot.SecondaryResetAfterSeconds = &resetAfter
+			snapshot.SecondaryWindowMinutes = &windowMinutes
+		}
+	}
+	applyWindow(usage.RateLimit.PrimaryWindow, true)
+	applyWindow(usage.RateLimit.SecondaryWindow, false)
+	return buildCodexUsageExtraUpdates(snapshot, now)
+}
+
 func (s *OpenAIQuotaService) cacheResetCreditsSnapshot(ctx context.Context, accountID int64, credits *OpenAIRateLimitResetCredits, updates map[string]any) error {
 	if credits == nil || (credits.AvailableCount > 0 && len(credits.Credits) == 0) {
 		return infraerrors.New(
