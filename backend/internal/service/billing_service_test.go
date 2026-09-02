@@ -33,6 +33,11 @@ func newTestBillingService() *BillingService {
 	return NewBillingService(&config.Config{}, nil)
 }
 
+func newTestBillingServiceWithOpenAILadderCatalog(t *testing.T) *BillingService {
+	t.Helper()
+	return NewBillingService(&config.Config{}, newStubPricingServiceFromJSON(t, openAILadderCatalogJSON))
+}
+
 func TestCalculateCost_BasicComputation(t *testing.T) {
 	svc := newTestBillingService()
 
@@ -194,9 +199,21 @@ func TestGetModelPricing_OpenAIGPT54Fallback(t *testing.T) {
 	require.InDelta(t, 2.5e-6, pricing.InputPricePerToken, 1e-12)
 	require.InDelta(t, 15e-6, pricing.OutputPricePerToken, 1e-12)
 	require.InDelta(t, 0.25e-6, pricing.CacheReadPricePerToken, 1e-12)
+	// 静态兜底价不携带阶梯，长上下文只由目录 above 字段驱动。
+	require.Zero(t, pricing.LongContextInputThreshold)
+	require.Zero(t, pricing.LongContextInputMultiplier)
+	require.Zero(t, pricing.LongContextOutputMultiplier)
+}
+
+func TestGetModelPricing_CatalogAboveTierFieldsDriveLongContext(t *testing.T) {
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
+
+	pricing, err := svc.GetModelPricing("gpt-5.4")
+	require.NoError(t, err)
 	require.Equal(t, 272000, pricing.LongContextInputThreshold)
 	require.InDelta(t, 2.0, pricing.LongContextInputMultiplier, 1e-12)
 	require.InDelta(t, 1.5, pricing.LongContextOutputMultiplier, 1e-12)
+	require.False(t, pricing.LongContextThresholdInclusive)
 }
 
 func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
@@ -209,10 +226,10 @@ func TestGetModelPricing_OpenAICompactAliasesFallback(t *testing.T) {
 		cacheRead   float64
 		longContext int
 	}{
-		{model: "gpt5.5", inputPrice: 5e-6, outputPrice: 30e-6, cacheRead: 0.5e-6, longContext: 272000},
-		{model: "gpt-5.5-pro-high", inputPrice: 30e-6, outputPrice: 180e-6, cacheRead: 3e-6, longContext: 272000},
-		{model: "openai/gpt5.5pro", inputPrice: 30e-6, outputPrice: 180e-6, cacheRead: 3e-6, longContext: 272000},
-		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 272000},
+		{model: "gpt5.5", inputPrice: 5e-6, outputPrice: 30e-6, cacheRead: 0.5e-6, longContext: 0},
+		{model: "gpt-5.5-pro-high", inputPrice: 30e-6, outputPrice: 180e-6, cacheRead: 3e-6, longContext: 0},
+		{model: "openai/gpt5.5pro", inputPrice: 30e-6, outputPrice: 180e-6, cacheRead: 3e-6, longContext: 0},
+		{model: "openai/gpt5.4", inputPrice: 2.5e-6, outputPrice: 15e-6, cacheRead: 0.25e-6, longContext: 0},
 		{model: "gpt5.4-mini", inputPrice: 7.5e-7, outputPrice: 4.5e-6, cacheRead: 7.5e-8, longContext: 0},
 		{model: "gpt5.3codexspark", inputPrice: 1.5e-6, outputPrice: 12e-6, cacheRead: 0.15e-6, longContext: 0},
 	}
@@ -243,7 +260,7 @@ func TestGetModelPricing_OpenAIGPT54MiniFallback(t *testing.T) {
 }
 
 func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	tokens := UsageTokens{
 		InputTokens:  300000,
@@ -263,7 +280,7 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *t
 }
 
 func TestCalculateCost_OpenAIGPT54LongContextMarkerRequiresActualCostIncrease(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	cost, err := svc.CalculateCostWithServiceTier(
 		"gpt-5.4-2026-03-05",
@@ -278,7 +295,7 @@ func TestCalculateCost_OpenAIGPT54LongContextMarkerRequiresActualCostIncrease(t 
 }
 
 func TestCalculateCost_OpenAILongContextBoundaryIncludesCacheTokens(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 	tests := []struct {
 		name        string
 		cacheRead   int
@@ -304,7 +321,7 @@ func TestCalculateCost_OpenAILongContextBoundaryIncludesCacheTokens(t *testing.T
 }
 
 func TestCalculateCost_GPT56SolMarketplaceIntervalsMatchSettlement(t *testing.T) {
-	svc := newTestBillingService()
+	svc := NewBillingService(&config.Config{}, newStubPricingServiceFromJSON(t, gpt56LadderCatalogJSON))
 	const groupRate = 3.0
 
 	display := svc.GetDisplayPricing("gpt-5.6-sol", groupRate, nil)
@@ -482,14 +499,14 @@ func TestCalculateCostUnified_ExplicitIntervalsDoNotReapplyLongContextMultiplier
 }
 
 func TestCalculateCost_OpenAIGPT55ProLongContextAppliesWholeSessionMultipliers(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	tokens := UsageTokens{
 		InputTokens:  300000,
 		OutputTokens: 4000,
 	}
 
-	cost, err := svc.CalculateCost("gpt-5.5-pro-high", tokens, 1.0)
+	cost, err := svc.CalculateCost("gpt-5.5-pro", tokens, 1.0)
 	require.NoError(t, err)
 
 	expectedInput := float64(tokens.InputTokens) * 30e-6 * 2.0
@@ -504,7 +521,7 @@ func TestCalculateCost_OpenAIGPT55ProLongContextAppliesWholeSessionMultipliers(t
 // 修复前：CacheReadCost = tokens * 0.25e-6 （漏乘倍率，少计费用）。
 // 修复后：CacheReadCost = tokens * 0.25e-6 * LongContextInputMultiplier(=2.0)。
 func TestCalculateCost_OpenAIGPT54LongContextAppliesMultiplierToCacheRead(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	// InputTokens + CacheReadTokens = 1000 + 300000 = 301000 > 272000 阈值
 	tokens := UsageTokens{
@@ -532,7 +549,7 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesMultiplierToCacheRead(t *tes
 
 // 阴性测试：未触发长上下文时，cache_read_price 不应被错误地乘以倍率。
 func TestCalculateCost_OpenAIGPT54NoLongContextKeepsCacheReadAtBasePrice(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	// InputTokens + CacheReadTokens = 1000 + 100000 = 101000 < 272000 阈值，不触发长上下文
 	tokens := UsageTokens{
@@ -554,7 +571,7 @@ func TestCalculateCost_OpenAIGPT54NoLongContextKeepsCacheReadAtBasePrice(t *test
 // 不经过 computeTokenBreakdown 内的 inputPrice / cacheReadPrice 倍率修改，因此
 // 修复前 cache_creation 部分会按基础价计算，少计费用约 50%（默认倍率 2.0）。
 func TestCalculateCost_OpenAIGPT54LongContextAppliesMultiplierToCacheCreation(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	// InputTokens + CacheReadTokens = 1000 + 300000 = 301000 > 272000 阈值
 	tokens := UsageTokens{
@@ -575,7 +592,7 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesMultiplierToCacheCreation(t 
 
 // 阴性测试：未触发长上下文时，cache_creation_price 不应被错误地乘以倍率。
 func TestCalculateCost_OpenAIGPT54NoLongContextKeepsCacheCreationAtBasePrice(t *testing.T) {
-	svc := newTestBillingService()
+	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
 	// InputTokens + CacheReadTokens = 1000 + 100000 = 101000 < 272000 阈值，不触发长上下文
 	tokens := UsageTokens{

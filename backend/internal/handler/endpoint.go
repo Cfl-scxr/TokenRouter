@@ -258,7 +258,7 @@ func InboundEndpointMiddleware() gin.HandlerFunc {
 
 // ──────────────────────────────────────────────────────────
 // Context helpers — used by handlers before building
-// RecordUsageInput / RecordUsageLongContextInput.
+// RecordUsageInput 记录用量时使用的快照结构。
 // ──────────────────────────────────────────────────────────
 
 // GetInboundEndpoint 返回 InboundEndpointMiddleware 保存的规范入站端点。
