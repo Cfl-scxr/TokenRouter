@@ -177,10 +177,12 @@ type UsageLog struct {
 	RequestType  RequestType
 	Stream       bool
 	OpenAIWSMode bool
-	DurationMs   *int
-	FirstTokenMs *int
-	UserAgent    *string
-	IPAddress    *string
+	// NativeCompactionV2 表示运行时识别出的 OpenAI 原生远程 compaction v2 请求。
+	NativeCompactionV2 bool
+	DurationMs         *int
+	FirstTokenMs       *int
+	UserAgent          *string
+	IPAddress          *string
 	// SessionID 是客户端显式提供的请求关联标识，例如 session_id 或 X-Session-Id
 	// 请求头；客户端未提供有效值时为 nil，且绝不从 prompt_cache_key 或内容派生。
 	SessionID *string

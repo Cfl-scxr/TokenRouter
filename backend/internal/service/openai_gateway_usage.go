@@ -40,6 +40,8 @@ type OpenAIRecordUsageInput struct {
 	APIKeyService     APIKeyQuotaUpdater
 	QuotaPlatform     string // user×platform 配额计量平台，由 handler 在请求 ctx 内算定后传入。
 	CyberBlocked      bool
+	// NativeCompactionV2 表示请求体运行时被识别为原生远程 compaction v2。
+	NativeCompactionV2 bool
 	ChannelUsageFields
 }
 
@@ -61,6 +63,8 @@ type CyberPolicyUsageInput struct {
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
+	// NativeCompactionV2 保留错误路径中原生 compaction 标记。
+	NativeCompactionV2 bool
 	ChannelUsageFields
 }
 
@@ -95,6 +99,7 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 		QuotaPlatform:      in.QuotaPlatform,
 		ChannelUsageFields: in.ChannelUsageFields,
 		CyberBlocked:       true,
+		NativeCompactionV2: in.NativeCompactionV2,
 	}); err != nil {
 		logger.LegacyPrintf("service.openai_gateway", "cyber usage record failed: request_id=%s err=%v", in.RequestID, err)
 	}
@@ -365,6 +370,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.AccountRateMultiplier = &accountRateMultiplier
 	usageLog.BillingType = billingType
 	usageLog.Stream = result.Stream
+	usageLog.NativeCompactionV2 = input.NativeCompactionV2
 	if input.CyberBlocked {
 		usageLog.RequestType = RequestTypeCyberBlocked
 	}

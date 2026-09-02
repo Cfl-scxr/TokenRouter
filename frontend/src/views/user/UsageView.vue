@@ -148,6 +148,10 @@
               <label class="input-label">{{ t('admin.usage.billingMode') }}</label>
               <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="applyFilters" />
             </div>
+            <div class="w-full sm:w-auto sm:min-w-[220px]">
+              <label class="input-label">{{ t('usage.compactionFilter') }}</label>
+              <Select v-model="filters.native_compaction_v2" :options="compactionOptions" @change="applyFilters" />
+            </div>
               </div>
             </div>
           </div>
@@ -406,6 +410,7 @@ const filters = ref<UsageQueryParams>({
   request_type: undefined,
   billing_type: null,
   billing_mode: null,
+  native_compaction_v2: null,
 })
 
 const pagination = reactive({
@@ -440,6 +445,11 @@ const billingModeOptions = computed<SelectOption[]>(() => [
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
   { value: 'image', label: t('admin.usage.billingModeImage') },
   { value: 'video', label: t('admin.usage.billingModeVideo') },
+])
+const compactionOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('usage.allCompactions') },
+  { value: true, label: t('usage.nativeCompactionV2') },
+  { value: false, label: t('usage.legacyCompaction') },
 ])
 
 type UsageKeyOption = Pick<TeamAPIKey, 'id' | 'name'>
