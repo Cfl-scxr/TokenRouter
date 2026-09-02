@@ -949,6 +949,11 @@ func normalizeQoderModelForWhitelist(model string) string {
 // 5. 为兼容旧数据，非 Qoder 平台若未配置独立 model_whitelist，会继续把精确自映射条目视作最终白名单。
 // 6. OpenAI OAuth 非透传账号还会排除明确属于其他厂商的模型，避免 Codex 上游返回不可重试的 400。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	// OpenAI 透传模式仅替换认证，模型能力由上游决定；必须在 model_mapping
+	// 分支前短路，否则调度快照中的历史映射会把可用账号误判为不支持模型。
+	if a.IsOpenAIPassthroughEnabled() {
+		return true
+	}
 	mapping := a.GetModelMapping()
 	// Antigravity 仍保持“请求模型命中映射即可支持”的既有语义。
 	// 该平台的最终模型（含 thinking 后缀）校验由网关层专门处理，不能在这里提前套用通用白名单规则。
