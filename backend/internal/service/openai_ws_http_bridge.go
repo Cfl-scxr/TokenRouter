@@ -903,7 +903,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			if !wroteDownstream && shouldFailover &&
 				(turn == 1 || statusCode == http.StatusTooManyRequests) {
 				retrySame := requestScopedCapacity || terminalPolicy.Decision.RetryableOnSameAccount(account, statusCode)
-				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, statusCode, upstreamMessage, errMessage, retrySame)
+				if !requestScopedCapacity {
+					// 终止事件策略已在上方执行；交给错误构造器消费一次性状态，避免重复写入模型限流。
+					markOpenAIWSFailureSideEffectsApplied(c, statusCode, terminalPolicy.Decision.StopScheduling)
+				}
+				return nil, s.newOpenAIStreamPolicyFailoverErrorWithModel(c, account, true, resp.Header.Get("x-request-id"), resp.Header, statusCode, upstreamMessage, errMessage, retrySame, mappedModel)
 			}
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
 				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)
@@ -937,7 +941,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				}
 			} else if !requestScopedError {
 				defaultFailover = s.shouldFailoverOpenAIWSError(account, policyStatus, upstreamMessage)
-				decision = s.applyOpenAIAccountUpstreamError(ctx, account, policyStatus, resp.Header, upstreamMessage, mappedModel)
+				semanticHeaders := resp.Header
+				if policyStatus == http.StatusTooManyRequests {
+					semanticHeaders = openAIWSSemantic429Headers(account, mappedModel, semanticHeaders)
+				}
+				decision = s.applyOpenAIAccountUpstreamError(ctx, account, policyStatus, semanticHeaders, upstreamMessage, mappedModel)
 			}
 			if decision.StopScheduling {
 				failureAccountSideEffectsApplied = true
@@ -961,7 +969,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 						ShouldDisable: decision.StopScheduling,
 					})
 				}
-				return nil, s.newOpenAIStreamPolicyFailoverError(c, account, true, resp.Header.Get("x-request-id"), resp.Header, policyStatus, upstreamMessage, errMessage, retrySame)
+				return nil, s.newOpenAIStreamPolicyFailoverErrorWithModel(c, account, true, resp.Header.Get("x-request-id"), resp.Header, policyStatus, upstreamMessage, errMessage, retrySame, mappedModel)
 			}
 			if wroteDownstream && requestScopedCapacity && !capacityFailoverSuppressedLogged {
 				logOpenAICapacityFailoverSuppressed(ctx, account, "ws_http_bridge", resp.Header.Get("x-request-id"), eventType)

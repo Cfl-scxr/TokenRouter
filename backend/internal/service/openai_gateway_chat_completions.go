@@ -538,9 +538,9 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		}
 		if decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payload, message)) {
 			markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
-			return nil, s.newOpenAIStreamPolicyFailoverError(
+			return nil, s.newOpenAIStreamPolicyFailoverErrorWithModel(
 				c, account, false, requestID, resp.Header, policyStatus, payload, message,
-				openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
+				openAIStreamFailedEventRetryableOnSameAccount(account, payload, message), upstreamModel,
 			)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
@@ -785,9 +785,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			policyGeneric := decision.ShouldReturnGenericError()
 			if !clientOutputStarted && decision.ShouldFailover(account, policyStatus, openAIStreamFailedEventShouldFailover(payloadBytes, message)) {
 				markOpenAIWSFailureSideEffectsApplied(c, policyStatus, decision.StopScheduling)
-				streamFailoverErr = s.newOpenAIStreamPolicyFailoverError(
+				streamFailoverErr = s.newOpenAIStreamPolicyFailoverErrorWithModel(
 					c, account, false, requestID, resp.Header, policyStatus, payloadBytes, message,
-					openAIStreamFailedEventRetryableOnSameAccount(account, payloadBytes, message),
+					openAIStreamFailedEventRetryableOnSameAccount(account, payloadBytes, message), upstreamModel,
 				)
 				return true
 			}

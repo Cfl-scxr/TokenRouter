@@ -260,6 +260,10 @@ func (s *OpenAIGatewayService) applyOpenAIAccountUpstreamErrorInternal(
 		}
 		return decision
 	}
+	if statusCode == http.StatusTooManyRequests && s.rateLimitService != nil && len(canonicalModel) > 0 &&
+		s.rateLimitService.HandleOpenAICodexSparkRateLimit(stateCtx, account, canonicalModel[0], statusCode, headers, responseBody) {
+		return decision
+	}
 	if suppressDefaultRateLimitState && statusCode == http.StatusTooManyRequests {
 		return decision
 	}
