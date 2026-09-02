@@ -547,9 +547,10 @@ type UsageLog struct {
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
-	// ReasoningEffort is the request's reasoning effort level.
-	// OpenAI: "low"/"medium"/"high"/"xhigh"; Claude: "low"/"medium"/"high"/"max".
+	// ReasoningEffort 是最终转发给上游的推理档位。
 	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
+	// RequestedReasoningEffort 是策略与模型映射前客户端请求的推理档位。
+	RequestedReasoningEffort *string `json:"requested_reasoning_effort,omitempty"`
 	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
 	InboundEndpoint *string `json:"inbound_endpoint,omitempty"`
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.
@@ -631,7 +632,6 @@ type AdminUsageLog struct {
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).
 	UpstreamModel *string `json:"upstream_model,omitempty"`
-
 	// ChannelID 渠道 ID
 	ChannelID *int64 `json:"channel_id,omitempty"`
 	// ModelMappingChain 模型映射链，如 "a→b→c"

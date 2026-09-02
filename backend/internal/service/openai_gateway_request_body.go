@@ -1357,6 +1357,53 @@ func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string
 	return &value
 }
 
+// CanonicalRequestedReasoningEffort 提取策略改写前客户端请求的推理档位。
+// 显式字段优先；缺失显式字段时再从模型名末尾的档位后缀推导。
+func CanonicalRequestedReasoningEffort(body []byte, modelCandidates ...string) *string {
+	raw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+	if raw == "" {
+		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(gjson.GetBytes(body, "output_config.effort").String())
+	}
+	if raw != "" {
+		canonical := NormalizeMaxReasoningEffort(raw)
+		if canonical == "" {
+			return nil
+		}
+		return &canonical
+	}
+	for _, model := range modelCandidates {
+		if effort := canonicalReasoningEffortFromModelSuffix(model); effort != "" {
+			return &effort
+		}
+	}
+	if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model != "" {
+		if effort := canonicalReasoningEffortFromModelSuffix(model); effort != "" {
+			return &effort
+		}
+	}
+	return nil
+}
+
+func canonicalReasoningEffortFromModelSuffix(model string) string {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return ""
+	}
+	if slash := strings.LastIndexByte(model, '/'); slash >= 0 {
+		model = model[slash+1:]
+	}
+	parts := strings.FieldsFunc(strings.ToLower(model), func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+	if len(parts) == 0 {
+		return ""
+	}
+	return NormalizeMaxReasoningEffort(parts[len(parts)-1])
+}
+
 // extractEffectiveOpenAIReasoningEffortFromBody 从最终上游请求体读取实际转发档位。
 // 原请求提供非空 effort、但最终请求体已不再携带时，不允许再从模型后缀补值；
 // 空字符串、空白字符串和 null 沿用既有语义，视为未提供。
@@ -2060,6 +2107,39 @@ func extractOpenAIReasoningEffort(reqBody map[string]any, modelCandidates ...str
 		return nil
 	}
 	return &value
+}
+
+// CanonicalRequestedReasoningEffortFromReqBody 是 map 形态请求体的同等入口。
+func CanonicalRequestedReasoningEffortFromReqBody(reqBody map[string]any, modelCandidates ...string) *string {
+	if reqBody == nil {
+		return CanonicalRequestedReasoningEffort(nil, modelCandidates...)
+	}
+	raw := ""
+	if reasoning, ok := reqBody["reasoning"].(map[string]any); ok {
+		if effort, ok := reasoning["effort"].(string); ok {
+			raw = strings.TrimSpace(effort)
+		}
+	}
+	if raw == "" {
+		if effort, ok := reqBody["reasoning_effort"].(string); ok {
+			raw = strings.TrimSpace(effort)
+		}
+	}
+	if raw == "" {
+		if outputConfig, ok := reqBody["output_config"].(map[string]any); ok {
+			if effort, ok := outputConfig["effort"].(string); ok {
+				raw = strings.TrimSpace(effort)
+			}
+		}
+	}
+	if raw != "" {
+		canonical := NormalizeMaxReasoningEffort(raw)
+		if canonical == "" {
+			return nil
+		}
+		return &canonical
+	}
+	return CanonicalRequestedReasoningEffort(nil, modelCandidates...)
 }
 
 func normalizeOpenAIReasoningEffort(raw string) string {

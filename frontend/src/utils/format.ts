@@ -291,6 +291,33 @@ export function formatReasoningEffort(effort: string | null | undefined): string
   }
 }
 
+// reasoning_effort 允许 x-high 等兼容写法，比较时统一去掉分隔符。
+export function reasoningEffortValuesEqual(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const normalize = (value: string | null | undefined) =>
+    (value ?? '').toString().trim().toLowerCase().replace(/[-_\s]/g, '')
+  const a = normalize(left)
+  const b = normalize(right)
+  return a !== '' && a === b
+}
+
+// 导出时合并请求档位与实际转发档位；两者不同才显示箭头，历史记录只保留旧值。
+export function formatReasoningEffortMapping(
+  requested: string | null | undefined,
+  forwarded: string | null | undefined,
+): string {
+  const requestedLabel = formatReasoningEffort(requested)
+  const forwardedLabel = formatReasoningEffort(forwarded)
+  if (requestedLabel === '-' && forwardedLabel === '-') return '-'
+  if (requestedLabel === '-' || reasoningEffortValuesEqual(requested, forwarded)) {
+    return forwardedLabel === '-' ? requestedLabel : forwardedLabel
+  }
+  if (forwardedLabel === '-') return requestedLabel
+  return `${requestedLabel} → ${forwardedLabel}`
+}
+
 /**
  * 格式化时间（显示时分秒）
  * @param date 日期字符串或 Date 对象

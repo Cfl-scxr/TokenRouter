@@ -52,15 +52,16 @@ type openAIWSPolicyEnforcingFrameConn struct {
 var _ openaiwsv2.FrameConn = (*openAIWSPolicyEnforcingFrameConn)(nil)
 
 type openAIWSTurnPayload struct {
-	StartedAt          time.Time
-	RequestBody        []byte
-	OriginalModel      string
-	RoutingModel       string
-	UpstreamModel      string
-	ServiceTier        *string
-	ReasoningEffort    *string
-	PreviousResponseID string
-	Source             string
+	StartedAt                time.Time
+	RequestBody              []byte
+	OriginalModel            string
+	RoutingModel             string
+	UpstreamModel            string
+	ServiceTier              *string
+	ReasoningEffort          *string
+	RequestedReasoningEffort *string
+	PreviousResponseID       string
+	Source                   string
 }
 
 type openAIWSTurnPayloadQueue struct {
@@ -84,6 +85,10 @@ func (q *openAIWSTurnPayloadQueue) Push(item openAIWSTurnPayload) {
 	if item.ReasoningEffort != nil {
 		value := *item.ReasoningEffort
 		item.ReasoningEffort = &value
+	}
+	if item.RequestedReasoningEffort != nil {
+		value := *item.RequestedReasoningEffort
+		item.RequestedReasoningEffort = &value
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -227,8 +232,9 @@ func openAIWSPassthroughPolicyModelFromSessionFrame(account *Account, payload []
 }
 
 type openAIWSPassthroughUsageMeta struct {
-	serviceTier     atomic.Pointer[string]
-	reasoningEffort atomic.Pointer[string]
+	serviceTier              atomic.Pointer[string]
+	reasoningEffort          atomic.Pointer[string]
+	requestedReasoningEffort atomic.Pointer[string]
 
 	// 仅在 client->upstream filter goroutine 中读写；Load 侧通过上方原子指针同步。
 	sessionRequestModel string
@@ -250,6 +256,15 @@ func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(policyOutput []byte, m
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
 	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, mappedModel, m.sessionRequestModel))
+}
+
+// captureRequestedReasoningEffort 在策略和模型改写前保存客户端档位。
+func (m *openAIWSPassthroughUsageMeta) captureRequestedReasoningEffort(originalBody []byte, modelCandidates ...string) {
+	if m == nil {
+		return
+	}
+	candidates := append([]string{m.sessionRequestModel}, modelCandidates...)
+	m.requestedReasoningEffort.Store(CanonicalRequestedReasoningEffort(originalBody, candidates...))
 }
 
 func (m *openAIWSPassthroughUsageMeta) updateSessionRequestModel(payload []byte) {
@@ -763,6 +778,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		firstClientMessage = liteFirstMessage
 	}
+	originalFirstClientMessage := firstClientMessage
 	if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
 		if capped, changed := ApplyOpenAIReasoningEffortPolicy(firstClientMessage, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 			firstClientMessage = capped
@@ -776,6 +792,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	// usage 元数据必须在改写为 U 前捕获客户端模型 R。
 	usageMeta := newOpenAIWSPassthroughUsageMeta(initialRequestModel, firstClientMessage)
+	usageMeta.captureRequestedReasoningEffort(originalFirstClientMessage, initialRequestModel)
 	logOpenAIWSV2Passthrough(
 		"relay_start account_id=%d model=%s previous_response_id=%s first_message_type=%s first_message_bytes=%d",
 		account.ID,
@@ -892,15 +909,16 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 	turnPayloads := newOpenAIWSTurnPayloadQueue()
 	turnPayloads.Push(openAIWSTurnPayload{
-		StartedAt:          firstTurnStartedAt,
-		RequestBody:        firstClientMessage,
-		OriginalModel:      requestModel,
-		RoutingModel:       firstRoutingModel,
-		UpstreamModel:      firstUpstreamModel,
-		ServiceTier:        usageMeta.serviceTier.Load(),
-		ReasoningEffort:    usageMeta.reasoningEffort.Load(),
-		PreviousResponseID: requestPreviousResponseID,
-		Source:             "passthrough",
+		StartedAt:                firstTurnStartedAt,
+		RequestBody:              firstClientMessage,
+		OriginalModel:            requestModel,
+		RoutingModel:             firstRoutingModel,
+		UpstreamModel:            firstUpstreamModel,
+		ServiceTier:              usageMeta.serviceTier.Load(),
+		ReasoningEffort:          usageMeta.reasoningEffort.Load(),
+		RequestedReasoningEffort: usageMeta.requestedReasoningEffort.Load(),
+		PreviousResponseID:       requestPreviousResponseID,
+		Source:                   "passthrough",
 	})
 	SetOpsUpstreamModel(c, firstUpstreamModel)
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -1145,10 +1163,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					payload = accountScopedPayload
 				}
 			}
+			originalResponseCreate := payload
 			if isResponseCreate && hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
 				if capped, changed := ApplyOpenAIReasoningEffortPolicy(payload, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 					payload = capped
 				}
+			}
+			if isResponseCreate {
+				usageMeta.captureRequestedReasoningEffort(originalResponseCreate)
 			}
 			turnNo := int(completedTurns.Load()) + 1
 			if turnNo < 2 {
@@ -1230,15 +1252,16 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				turnPayloads.Push(openAIWSTurnPayload{
-					StartedAt:          responseCreateAt,
-					RequestBody:        out,
-					OriginalModel:      requestModelForThisFrame,
-					RoutingModel:       routingModel,
-					UpstreamModel:      model,
-					ServiceTier:        usageMeta.serviceTier.Load(),
-					ReasoningEffort:    usageMeta.reasoningEffort.Load(),
-					PreviousResponseID: strings.TrimSpace(gjson.GetBytes(out, "previous_response_id").String()),
-					Source:             "passthrough",
+					StartedAt:                responseCreateAt,
+					RequestBody:              out,
+					OriginalModel:            requestModelForThisFrame,
+					RoutingModel:             routingModel,
+					UpstreamModel:            model,
+					ServiceTier:              usageMeta.serviceTier.Load(),
+					ReasoningEffort:          usageMeta.reasoningEffort.Load(),
+					RequestedReasoningEffort: usageMeta.requestedReasoningEffort.Load(),
+					PreviousResponseID:       strings.TrimSpace(gjson.GetBytes(out, "previous_response_id").String()),
+					Source:                   "passthrough",
 				})
 				responseCreateAtCopy := responseCreateAt
 				acceptedTurnStartedAt.Store(&responseCreateAtCopy)
@@ -1383,6 +1406,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					UpstreamResponseServiceTier: normalizeObservedOpenAIServiceTier(turn.ResponseServiceTier),
 					ServiceTier:                 turnPayload.ServiceTier,
 					ReasoningEffort:             turnPayload.ReasoningEffort,
+					RequestedReasoningEffort:    turnPayload.RequestedReasoningEffort,
 					Stream:                      true,
 					OpenAIWSMode:                true,
 					UpstreamTerminalEvent:       normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
@@ -1549,6 +1573,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		UpstreamResponseServiceTier: normalizeObservedOpenAIServiceTier(relayResult.ResponseServiceTier),
 		ServiceTier:                 usageMeta.serviceTier.Load(),
 		ReasoningEffort:             usageMeta.reasoningEffort.Load(),
+		RequestedReasoningEffort:    usageMeta.requestedReasoningEffort.Load(),
 		Stream:                      true,
 		OpenAIWSMode:                true,
 		UpstreamTerminalEvent:       normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),

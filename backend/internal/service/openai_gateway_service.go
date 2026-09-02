@@ -265,11 +265,12 @@ type OpenAIForwardResult struct {
 	// The upstream response declaration remains separate above and is reconciled
 	// at usage-recording time, where the credential protocol is available.
 	ServiceTier *string
-	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
-	// Stored for usage records display; nil means not provided / not applicable.
+	// ReasoningEffort 是最终上游请求中的推理档位；nil 表示未提供或不适用。
 	ReasoningEffort *string
-	Stream          bool
-	OpenAIWSMode    bool
+	// RequestedReasoningEffort 是策略与模型映射前客户端请求的推理档位。
+	RequestedReasoningEffort *string
+	Stream                   bool
+	OpenAIWSMode             bool
 	// UpstreamTerminalEvent 记录 Responses WebSocket 请求观测到的规范化终止事件；
 	// 空值保持旧调用方和非 WebSocket 请求的成功语义。
 	UpstreamTerminalEvent string

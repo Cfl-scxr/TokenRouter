@@ -602,6 +602,8 @@ type ForwardResult struct {
 	FirstTokenMs     *int // 首字时间（流式请求）
 	ClientDisconnect bool // 客户端是否在流式传输过程中断开
 	ReasoningEffort  *string
+	// RequestedReasoningEffort 保存客户端在兼容层映射前提交的推理档位。
+	RequestedReasoningEffort *string
 	// UpstreamResponseServiceTier 是上游响应声明的实际服务档位；空值表示未声明或无法确认。
 	UpstreamResponseServiceTier string
 	// ServiceTier 是请求侧声明的服务档位；计费时只允许按上游实际档位降档。

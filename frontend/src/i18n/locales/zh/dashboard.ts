@@ -373,6 +373,7 @@ export default {
     requestedModel: '请求',
     upstreamModel: '上游',
     reasoningEffort: '推理强度',
+    requestedReasoningEffort: '请求推理强度',
     endpoint: '端点',
     endpointDistribution: '端点分布',
     teamMemberTrend: '成员消费趋势',

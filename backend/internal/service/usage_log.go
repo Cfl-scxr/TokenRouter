@@ -129,10 +129,13 @@ type UsageLog struct {
 	BillingMode *string
 	// ServiceTier 记录归一化后的计费层级；Claude Fast 同样使用 "priority"。
 	ServiceTier *string
-	// ReasoningEffort is the request's reasoning effort level.
-	// OpenAI: "low" / "medium" / "high" / "xhigh"; Claude: "low" / "medium" / "high" / "max".
-	// Nil means not provided / not applicable.
+	// ReasoningEffort 是最终转发给上游的推理档位，可能已经经过分组策略或模型族归一化。
+	// OpenAI: "low" / "medium" / "high" / "xhigh" / "max"；Claude: "low" / "medium" / "high" / "max"。
+	// Nil 表示未提供或不适用。
 	ReasoningEffort *string
+	// RequestedReasoningEffort 是客户端在策略改写前请求的推理档位。
+	// 历史记录可能为空，此时展示层回退到 ReasoningEffort。
+	RequestedReasoningEffort *string
 	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
 	InboundEndpoint *string
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.

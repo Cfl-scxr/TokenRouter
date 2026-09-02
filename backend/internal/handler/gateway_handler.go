@@ -171,6 +171,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	bindRequestedReasoningEffort(c, body, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	// 解析渠道级模型映射
@@ -553,6 +554,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 			clientSessionID := service.ExtractClientSessionID(c)
+			stampForwardRequestedReasoningEffort(result, c)
 			h.submitUsageRecordTask(c, func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -854,6 +856,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if usageResult == nil {
 					return
 				}
+				stampForwardRequestedReasoningEffort(usageResult, c)
 				userAgent := c.GetHeader("User-Agent")
 				clientIP := ip.GetClientIP(c)
 				requestPayloadHash := service.HashUsageRequestPayload(attemptParsedReq.Body.Bytes())

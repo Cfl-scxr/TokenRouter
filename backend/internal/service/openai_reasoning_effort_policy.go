@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -16,6 +17,36 @@ const (
 )
 
 var openAIReasoningEffortValues = []string{"minimal", "low", "medium", "high", "xhigh", "max"}
+
+type requestedReasoningEffortContextKey struct{}
+
+// WithRequestedReasoningEffort 将请求进入策略层前捕获的客户端档位绑定到 context。
+func WithRequestedReasoningEffort(ctx context.Context, effort string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	effort = strings.TrimSpace(effort)
+	if effort == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, requestedReasoningEffortContextKey{}, effort)
+}
+
+// RequestedReasoningEffortFromContext 读取已绑定的客户端档位。
+func RequestedReasoningEffortFromContext(ctx context.Context) *string {
+	if ctx == nil {
+		return nil
+	}
+	effort, ok := ctx.Value(requestedReasoningEffortContextKey{}).(string)
+	if !ok {
+		return nil
+	}
+	effort = strings.TrimSpace(effort)
+	if effort == "" {
+		return nil
+	}
+	return &effort
+}
 
 // NormalizeMaxReasoningEffort 校验并标准化分组策略值。
 // 空字符串表示分组不设置上限。

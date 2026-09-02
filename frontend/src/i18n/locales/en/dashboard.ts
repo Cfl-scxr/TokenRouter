@@ -368,6 +368,7 @@ export default {
     requestedModel: 'Requested',
     upstreamModel: 'Upstream',
     reasoningEffort: 'Reasoning Effort',
+    requestedReasoningEffort: 'Requested Reasoning Effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
     teamMemberTrend: 'Member Spending Trend',
