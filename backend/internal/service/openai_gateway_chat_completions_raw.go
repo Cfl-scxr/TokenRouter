@@ -356,20 +356,18 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
-			RequestID:                     requestID,
-			Usage:                         usage,
-			Model:                         originalModel,
-			BillingModel:                  billingModel,
-			UpstreamModel:                 upstreamModel,
-			UpstreamResponseModel:         observedUpstreamResponseModel(c),
-			UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
-			UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
-			ReasoningEffort:               reasoningEffort,
-			ServiceTier:                   resolvedOpenAIUpstreamServiceTier(c, serviceTier),
-			Stream:                        true,
-			Duration:                      time.Since(startTime),
-			FirstTokenMs:                  firstTokenMs,
-			ResponseBody:                  streamAccumulator.ResponseBody(&usage),
+			RequestID:                   requestID,
+			Usage:                       usage,
+			Model:                       originalModel,
+			BillingModel:                billingModel,
+			UpstreamModel:               upstreamModel,
+			UpstreamResponseServiceTier: observedUpstreamResponseServiceTier(c),
+			ReasoningEffort:             reasoningEffort,
+			ServiceTier:                 resolvedOpenAIUpstreamServiceTier(c, serviceTier),
+			Stream:                      true,
+			Duration:                    time.Since(startTime),
+			FirstTokenMs:                firstTokenMs,
+			ResponseBody:                streamAccumulator.ResponseBody(&usage),
 		}
 	}
 
