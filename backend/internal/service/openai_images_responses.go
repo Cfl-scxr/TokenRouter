@@ -38,11 +38,9 @@ type OpenAIImagesUpstreamError struct {
 	Param             string
 	UpstreamRequestID string
 
-	// SynthesizedFromModelText marks an error the gateway inferred from the
-	// model's plain-text output instead of reading it off a structured upstream
-	// error frame. Such a verdict describes this one turn ("the model answered
-	// with words instead of an image"), not the account — see
-	// shouldCoolOpenAIImagesToolForError.
+	// SynthesizedFromModelText 表示网关从模型纯文本输出推断出错误，而不是从上游结构化错误帧读取。
+	// 该判定只描述当前轮次（模型返回文字而非图片），不代表账号能力失效；详见
+	// shouldCoolOpenAIImagesToolForError。
 	SynthesizedFromModelText bool
 }
 
@@ -716,9 +714,8 @@ func openAIImagesTextFallbackErrorForText(text string) *OpenAIImagesUpstreamErro
 		ErrorType:  "upstream_error",
 		Code:       "image_generation_unavailable",
 		Message:    "Upstream did not execute image generation",
-		// Inferred from the model's own words, not from an upstream error frame:
-		// good enough to fail this turn over to another account, not evidence that
-		// this account's image tool is down for the next 30 minutes.
+		// 该错误从模型文字推断而来，而非上游错误帧：足以让本轮切换账号，
+		// 但不能证明当前账号图片工具未来 30 分钟不可用。
 		SynthesizedFromModelText: true,
 	}
 }
@@ -1970,22 +1967,17 @@ const (
 	openAIImagesOAuthUnavailableReason   = "openai_images_oauth_tool_unavailable"
 )
 
-// shouldCoolOpenAIImagesToolForError decides whether an image_generation_unavailable
-// verdict is durable enough to park the account's image tool for
-// openAIImagesOAuthUnavailableCooldown.
+// shouldCoolOpenAIImagesToolForError 判断 image_generation_unavailable 判定是否足够持久，
+// 可以将账号图片工具置于 openAIImagesOAuthUnavailableCooldown 冷却期。
 //
-// Only an upstream error frame that names the condition qualifies. A verdict the
-// gateway synthesized from the model's plain-text reply does not: it merely says
-// this prompt produced words instead of an image, which is prompt-dependent and
-// happens on healthy accounts. Writing a 30-minute account-level cooldown from it
-// is doubly wrong because the very same error is classified retryable
-// (IsOpenAIImagesRetryableUpstreamError: status >= 500) and drives
-// newOpenAIAccountFailoverError — so one such reply walks the pool and cools every
-// account the retry touches.
+// 只有上游错误帧明确指出该状态时才符合条件。网关从模型纯文本回复合成的判定不符合：
+// 它仅说明当前提示词得到文字而非图片，取决于提示词，健康账号也可能出现。为此写入
+// 30 分钟账号级冷却尤其不合理，因为同一错误会被判定为可重试
+// （IsOpenAIImagesRetryableUpstreamError：状态码 >= 500）并驱动 newOpenAIAccountFailoverError，
+// 使一次回复沿账号池重试并冷却所有被触及的账号。
 //
-// This mirrors the rule the alpha/search path already states in words: a
-// tool-endpoint failure "仍允许本次请求换号，但不修改任何账号状态"
-// (see shouldApplyOpenAIAlphaSearchAccountErrorSideEffects).
+// 这与 alpha/search 路径已有的规则一致：工具端点故障“仍允许本次请求换号，但不修改任何账号状态”
+// （参见 shouldApplyOpenAIAlphaSearchAccountErrorSideEffects）。
 func shouldCoolOpenAIImagesToolForError(upstreamErr *OpenAIImagesUpstreamError) bool {
 	return upstreamErr != nil && !upstreamErr.SynthesizedFromModelText
 }
