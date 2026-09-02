@@ -516,10 +516,9 @@ func runUpstreamToClient(
 		if err != nil {
 			emitTurnComplete(onTurnComplete, state, finalizePendingBareError(state, nowFn()))
 			graceful := isDisconnectError(err)
-			// A clean WebSocket close only describes the transport handshake. Once
-			// the upstream has started a Responses turn, success still requires a
-			// terminal protocol event. Treat an early 1000/EOF as a relay failure so
-			// the adapter does not report relay_completed with an active turn.
+			// WebSocket 正常关闭只表示传输握手完成；上游一旦开始 Responses 回合，
+			// 仍必须收到终态协议事件才算成功。1000/EOF 若发生在终态前，应视为
+			// relay 失败，避免适配器在回合仍活跃时错误报告 relay_completed。
 			if graceful && openAIWSRelayActiveTurnID(state) != "" {
 				graceful = false
 				err = errors.New("upstream websocket closed before terminal event: " + err.Error())
