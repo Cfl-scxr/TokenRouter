@@ -445,6 +445,8 @@ export default {
     imageSizeUnknown: 'unknown',
     cacheRead: 'Read',
     cacheWrite: 'Write',
+    cacheWrite5m: 'Write (5m)',
+    cacheWrite1h: 'Write (1h)',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',

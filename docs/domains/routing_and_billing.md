@@ -93,6 +93,8 @@ Kimi、Zhipu、DeepSeek 账号的计费候选不能把客户端 `claude`、`opus
 
 渠道模型定价可为 token 模式配置 `time_pricing`：使用 IANA 时区和每日重复的左闭右开 `HH:mm`/`HH:mm:ss` 区间，倍率必须有限、至少 `0.01` 且最多两位小数，区间不得重叠；结束时间 `00:00` 表示当天 24:00，跨午夜区间必须拆成两段。该倍率只作用于渠道 token 的输入、图片输入、输出和缓存价格桶，不作用于按次、图片或视频模式，也不复制到分组价卡或账号统计规则。管理员写入时由后端最终校验，存储在 `channel_model_pricing.time_pricing` JSONB；当前 fork 的迁移文件为 `249_channel_model_time_pricing.sql`。普通请求使用结算时刻，OpenAI WebSocket 使用对应 turn 开始时刻；配置损坏或无法加载时安全回退到 `1x`，不改变既有计费。
 
+缓存写入可选地拆成 `cache_write_price`（5 分钟）和 `cache_write_1h_price`（1 小时）两档；1h 列为 NULL 时继续把旧列用于两档，保证历史渠道和账号统计规则的结算不变。该字段同时适用于渠道默认价、token 区间和账号统计价，显式 0 仍表示免费；分档用量缺失时按旧聚合 token 数回退。数据库迁移为 `261_channel_cache_write_1h_pricing.sql`。
+
 Grok 媒体、搜索和 Voice 使用独立计价维度。视频按输出秒计价，`video_model_prices` 可按规范模型族与 480p/720p/1080p 覆盖，未命中时依次回退 `video_price_*` 和模型族内置价；异步创建不扣费，首次完成观察才用任务级稳定 request ID 结算。搜索以 `search_price_per_1k` 按调用次数附加在 token 费用之上；独立 `/web_search` 和 `/x_search` 的纯工具请求也可单独结算。Realtime、TTS、STT 分别使用每分钟、每百万字符、每小时价格；Realtime 握手或纯文本会话不出账，只有任一方向观察到非空音频负载后才按该连接的会话时长结算。未知的数字版 Grok 文本模型可以回退到当前默认文本 token 价，但模型 ID 含 `imagine`、`image`、`video`、`audio`、`speech`、`tts`、`transcribe` 或 `realtime` 时必须排除这项兜底；`vision` 多模态对话仍按 token 计费。上述列 `NULL` 表示使用默认值，显式 `0` 表示免费，不能用“缺少 token usage”跳过已确认的媒体或工具用量。
 
 <a id="usage_settlement"></a>

@@ -606,12 +606,14 @@ export interface MarketplacePricingInterval {
   image_input_price_per_token?: number
   output_price_per_token?: number
   cache_write_price_per_token?: number
+  cache_write_1h_price_per_token?: number
   cache_read_price_per_token?: number
   image_output_price_per_token?: number
   fast_input_price_per_token?: number
   fast_image_input_price_per_token?: number
   fast_output_price_per_token?: number
   fast_cache_write_price_per_token?: number
+  fast_cache_write_1h_price_per_token?: number
   fast_cache_read_price_per_token?: number
   fast_image_output_price_per_token?: number
 }
@@ -623,12 +625,14 @@ export interface MarketplaceModelPricing {
   image_input_price_per_token?: number
   output_price_per_token?: number
   cache_write_price_per_token?: number
+  cache_write_1h_price_per_token?: number
   cache_read_price_per_token?: number
   image_output_price_per_token?: number
   fast_input_price_per_token?: number
   fast_image_input_price_per_token?: number
   fast_output_price_per_token?: number
   fast_cache_write_price_per_token?: number
+  fast_cache_write_1h_price_per_token?: number
   fast_cache_read_price_per_token?: number
   fast_image_output_price_per_token?: number
   context_intervals?: MarketplacePricingInterval[]

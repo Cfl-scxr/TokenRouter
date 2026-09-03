@@ -427,6 +427,26 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsServiceTier:        true,
 	}
 
+	// Claude Fable 5.x 的输入/输出和缓存写入价格相同；5.1 的缓存读取价降为每百万 token 0.25 美元。
+	s.fallbackPrices["claude-fable-5"] = &ModelPricing{
+		InputPricePerToken:         10e-6,
+		OutputPricePerToken:        50e-6,
+		CacheCreationPricePerToken: 12.5e-6,
+		CacheCreation5mPrice:       12.5e-6,
+		CacheCreation1hPrice:       20e-6,
+		CacheReadPricePerToken:     1e-6,
+		SupportsCacheBreakdown:     true,
+	}
+	s.fallbackPrices["claude-fable-5-1"] = &ModelPricing{
+		InputPricePerToken:         10e-6,
+		OutputPricePerToken:        50e-6,
+		CacheCreationPricePerToken: 12.5e-6,
+		CacheCreation5mPrice:       12.5e-6,
+		CacheCreation1hPrice:       20e-6,
+		CacheReadPricePerToken:     0.25e-6,
+		SupportsCacheBreakdown:     true,
+	}
+
 	// Gemini 3.1 Pro
 	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
 		InputPricePerToken:         2e-6,   // $2 per MTok
@@ -845,6 +865,14 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := strings.ToLower(model)
 
 	// 按模型系列匹配
+	// Fable 5.1 的别名必须先于 Fable 5，避免降级到旧缓存读取价。
+	if strings.Contains(modelLower, "fable-5-1") || strings.Contains(modelLower, "fable-5.1") ||
+		strings.Contains(modelLower, "fable5.1") || strings.Contains(modelLower, "fable51") {
+		return s.fallbackPrices["claude-fable-5-1"]
+	}
+	if strings.Contains(modelLower, "fable-5") || strings.Contains(modelLower, "fable5") {
+		return s.fallbackPrices["claude-fable-5"]
+	}
 	if strings.Contains(modelLower, "opus") {
 		if strings.Contains(modelLower, "4.8") || strings.Contains(modelLower, "4-8") {
 			return s.fallbackPrices["claude-opus-4.8"]
@@ -1177,7 +1205,14 @@ func applyChannelTokenPriceOverrides(pricing *ModelPricing, channelPricing *Chan
 		pricing.CacheCreationPriceExplicit = true
 		pricing.cacheCreationPriorityDerived = false
 		pricing.CacheCreation5mPrice = *channelPricing.CacheWritePrice
-		pricing.CacheCreation1hPrice = *channelPricing.CacheWritePrice
+		if channelPricing.CacheWrite1hPrice == nil {
+			// 兼容旧配置：未拆分时继续让 cache_write_price 覆盖两个 TTL 档位。
+			pricing.CacheCreation1hPrice = *channelPricing.CacheWritePrice
+		}
+	}
+	if channelPricing.CacheWrite1hPrice != nil {
+		pricing.CacheCreation1hPrice = *channelPricing.CacheWrite1hPrice
+		pricing.SupportsCacheBreakdown = true
 	}
 	if channelPricing.CacheReadPrice != nil {
 		priority := channelTierOverridePrice(pricing.CacheReadPricePerToken, pricing.CacheReadPricePerTokenPriority, *channelPricing.CacheReadPrice)
@@ -1772,42 +1807,47 @@ type ImagePriceConfig struct {
 // ModelDisplayPricing 是面向前端展示的模型价格快照。
 // 所有价格都已经应用了分组倍率，直接表示实际扣费单价。
 type ModelDisplayPricing struct {
-	PricingMode                  string
-	PriceStatus                  string
-	InputPricePerToken           float64
-	ImageInputPricePerToken      float64
-	OutputPricePerToken          float64
-	CacheWritePricePerToken      float64
-	CacheReadPricePerToken       float64
-	ImageOutputPricePerToken     float64
-	FastInputPricePerToken       float64
-	FastImageInputPricePerToken  float64
-	FastOutputPricePerToken      float64
-	FastCacheWritePricePerToken  float64
-	FastCacheReadPricePerToken   float64
-	FastImageOutputPricePerToken float64
-	ContextIntervals             []ModelDisplayPricingInterval
-	ImagePrice1K                 float64
-	ImagePrice2K                 float64
-	ImagePrice4K                 float64
+	PricingMode             string
+	PriceStatus             string
+	InputPricePerToken      float64
+	ImageInputPricePerToken float64
+	OutputPricePerToken     float64
+	CacheWritePricePerToken float64
+	// CacheWrite1hPricePerToken 是可选的 1 小时缓存写入展示单价。
+	CacheWrite1hPricePerToken     float64
+	CacheReadPricePerToken        float64
+	ImageOutputPricePerToken      float64
+	FastInputPricePerToken        float64
+	FastImageInputPricePerToken   float64
+	FastOutputPricePerToken       float64
+	FastCacheWritePricePerToken   float64
+	FastCacheWrite1hPricePerToken float64
+	FastCacheReadPricePerToken    float64
+	FastImageOutputPricePerToken  float64
+	ContextIntervals              []ModelDisplayPricingInterval
+	ImagePrice1K                  float64
+	ImagePrice2K                  float64
+	ImagePrice4K                  float64
 }
 
 // ModelDisplayPricingInterval 是按上下文 token 区间展示的模型价格。
 type ModelDisplayPricingInterval struct {
-	MinTokens                    int
-	MaxTokens                    *int
-	InputPricePerToken           float64
-	ImageInputPricePerToken      float64
-	OutputPricePerToken          float64
-	CacheWritePricePerToken      float64
-	CacheReadPricePerToken       float64
-	ImageOutputPricePerToken     float64
-	FastInputPricePerToken       float64
-	FastImageInputPricePerToken  float64
-	FastOutputPricePerToken      float64
-	FastCacheWritePricePerToken  float64
-	FastCacheReadPricePerToken   float64
-	FastImageOutputPricePerToken float64
+	MinTokens                     int
+	MaxTokens                     *int
+	InputPricePerToken            float64
+	ImageInputPricePerToken       float64
+	OutputPricePerToken           float64
+	CacheWritePricePerToken       float64
+	CacheWrite1hPricePerToken     float64
+	CacheReadPricePerToken        float64
+	ImageOutputPricePerToken      float64
+	FastInputPricePerToken        float64
+	FastImageInputPricePerToken   float64
+	FastOutputPricePerToken       float64
+	FastCacheWritePricePerToken   float64
+	FastCacheWrite1hPricePerToken float64
+	FastCacheReadPricePerToken    float64
+	FastImageOutputPricePerToken  float64
 }
 
 // GetDisplayPricing 返回用于模型广场展示的价格信息。
@@ -1955,6 +1995,7 @@ func pricingIntervalHasEffectiveTokenPricing(interval PricingInterval) bool {
 	return interval.InputPrice != nil ||
 		interval.OutputPrice != nil ||
 		interval.CacheWritePrice != nil ||
+		interval.CacheWrite1hPrice != nil ||
 		interval.CacheReadPrice != nil
 }
 
@@ -1966,6 +2007,8 @@ func sameDisplayTokenPricing(a *ModelPricing, b *ModelPricing) bool {
 		a.ImageInputPricePerToken == b.ImageInputPricePerToken &&
 		a.OutputPricePerToken == b.OutputPricePerToken &&
 		a.CacheCreationPricePerToken == b.CacheCreationPricePerToken &&
+		a.CacheCreation5mPrice == b.CacheCreation5mPrice &&
+		a.CacheCreation1hPrice == b.CacheCreation1hPrice &&
 		a.CacheReadPricePerToken == b.CacheReadPricePerToken &&
 		a.ImageOutputPricePerToken == b.ImageOutputPricePerToken
 }
@@ -1996,25 +2039,45 @@ func buildTokenDisplayPricing(pricing *ModelPricing, rateMultiplier float64) Mod
 		return buildTokenIntervalDisplayPricing(intervals)
 	}
 
+	cacheWritePrice, cacheWrite1hPrice := cacheCreationDisplayPrices(pricing)
 	displayPricing := ModelDisplayPricing{
-		PricingMode:              "token",
-		PriceStatus:              "priced",
-		InputPricePerToken:       pricing.InputPricePerToken * rateMultiplier,
-		ImageInputPricePerToken:  pricing.ImageInputPricePerToken * rateMultiplier,
-		OutputPricePerToken:      pricing.OutputPricePerToken * rateMultiplier,
-		CacheWritePricePerToken:  pricing.CacheCreationPricePerToken * rateMultiplier,
-		CacheReadPricePerToken:   pricing.CacheReadPricePerToken * rateMultiplier,
-		ImageOutputPricePerToken: pricing.ImageOutputPricePerToken * rateMultiplier,
+		PricingMode:               "token",
+		PriceStatus:               "priced",
+		InputPricePerToken:        pricing.InputPricePerToken * rateMultiplier,
+		ImageInputPricePerToken:   pricing.ImageInputPricePerToken * rateMultiplier,
+		OutputPricePerToken:       pricing.OutputPricePerToken * rateMultiplier,
+		CacheWritePricePerToken:   cacheWritePrice * rateMultiplier,
+		CacheWrite1hPricePerToken: cacheWrite1hPrice * rateMultiplier,
+		CacheReadPricePerToken:    pricing.CacheReadPricePerToken * rateMultiplier,
+		ImageOutputPricePerToken:  pricing.ImageOutputPricePerToken * rateMultiplier,
 	}
 	if fastPricing, ok := fastModeDisplayPricing(pricing); ok {
 		displayPricing.FastInputPricePerToken = fastPricing.InputPricePerToken * rateMultiplier
 		displayPricing.FastImageInputPricePerToken = fastPricing.ImageInputPricePerToken * rateMultiplier
 		displayPricing.FastOutputPricePerToken = fastPricing.OutputPricePerToken * rateMultiplier
-		displayPricing.FastCacheWritePricePerToken = fastPricing.CacheCreationPricePerToken * rateMultiplier
+		fastCacheWritePrice, fastCacheWrite1hPrice := cacheCreationDisplayPrices(fastPricing)
+		displayPricing.FastCacheWritePricePerToken = fastCacheWritePrice * rateMultiplier
+		displayPricing.FastCacheWrite1hPricePerToken = fastCacheWrite1hPrice * rateMultiplier
 		displayPricing.FastCacheReadPricePerToken = fastPricing.CacheReadPricePerToken * rateMultiplier
 		displayPricing.FastImageOutputPricePerToken = fastPricing.ImageOutputPricePerToken * rateMultiplier
 	}
 	return displayPricing
+}
+
+// cacheCreationDisplayPrices 返回展示用的 5m/1h 缓存写入单价。
+// 未启用 TTL 明细时只返回兼容旧配置的聚合单价。
+func cacheCreationDisplayPrices(pricing *ModelPricing) (float64, float64) {
+	if pricing == nil {
+		return 0, 0
+	}
+	short := pricing.CacheCreationPricePerToken
+	if pricing.SupportsCacheBreakdown && pricing.CacheCreation5mPrice > 0 {
+		short = pricing.CacheCreation5mPrice
+	}
+	if !pricing.SupportsCacheBreakdown {
+		return short, 0
+	}
+	return short, pricing.CacheCreation1hPrice
 }
 
 // longContextDisplayPricingIntervals 将内置长上下文倍率转换成模型广场可展示的两段价格。
@@ -2062,21 +2125,25 @@ func hasLongContextDisplayPricing(pricing *ModelPricing) bool {
 }
 
 func modelPricingDisplayInterval(minTokens int, maxTokens *int, pricing *ModelPricing, rateMultiplier float64) ModelDisplayPricingInterval {
+	cacheWritePrice, cacheWrite1hPrice := cacheCreationDisplayPrices(pricing)
 	interval := ModelDisplayPricingInterval{
-		MinTokens:                minTokens,
-		MaxTokens:                maxTokens,
-		InputPricePerToken:       pricing.InputPricePerToken * rateMultiplier,
-		ImageInputPricePerToken:  pricing.ImageInputPricePerToken * rateMultiplier,
-		OutputPricePerToken:      pricing.OutputPricePerToken * rateMultiplier,
-		CacheWritePricePerToken:  pricing.CacheCreationPricePerToken * rateMultiplier,
-		CacheReadPricePerToken:   pricing.CacheReadPricePerToken * rateMultiplier,
-		ImageOutputPricePerToken: pricing.ImageOutputPricePerToken * rateMultiplier,
+		MinTokens:                 minTokens,
+		MaxTokens:                 maxTokens,
+		InputPricePerToken:        pricing.InputPricePerToken * rateMultiplier,
+		ImageInputPricePerToken:   pricing.ImageInputPricePerToken * rateMultiplier,
+		OutputPricePerToken:       pricing.OutputPricePerToken * rateMultiplier,
+		CacheWritePricePerToken:   cacheWritePrice * rateMultiplier,
+		CacheWrite1hPricePerToken: cacheWrite1hPrice * rateMultiplier,
+		CacheReadPricePerToken:    pricing.CacheReadPricePerToken * rateMultiplier,
+		ImageOutputPricePerToken:  pricing.ImageOutputPricePerToken * rateMultiplier,
 	}
 	if fastPricing, ok := fastModeDisplayPricing(pricing); ok {
 		interval.FastInputPricePerToken = fastPricing.InputPricePerToken * rateMultiplier
 		interval.FastImageInputPricePerToken = fastPricing.ImageInputPricePerToken * rateMultiplier
 		interval.FastOutputPricePerToken = fastPricing.OutputPricePerToken * rateMultiplier
-		interval.FastCacheWritePricePerToken = fastPricing.CacheCreationPricePerToken * rateMultiplier
+		fastCacheWritePrice, fastCacheWrite1hPrice := cacheCreationDisplayPrices(fastPricing)
+		interval.FastCacheWritePricePerToken = fastCacheWritePrice * rateMultiplier
+		interval.FastCacheWrite1hPricePerToken = fastCacheWrite1hPrice * rateMultiplier
 		interval.FastCacheReadPricePerToken = fastPricing.CacheReadPricePerToken * rateMultiplier
 		interval.FastImageOutputPricePerToken = fastPricing.ImageOutputPricePerToken * rateMultiplier
 	}
@@ -2457,6 +2524,7 @@ func hasAnyDisplayTokenPricing(pricing *ModelPricing) bool {
 		pricing.ImageInputPricePerToken > 0 ||
 		pricing.OutputPricePerToken > 0 ||
 		pricing.CacheCreationPricePerToken > 0 ||
+		pricing.CacheCreation1hPrice > 0 ||
 		pricing.CacheReadPricePerToken > 0 ||
 		pricing.ImageOutputPricePerToken > 0
 }

@@ -450,6 +450,8 @@ export default {
     imageSizeUnknown: '未知',
     cacheRead: '读取',
     cacheWrite: '写入',
+    cacheWrite5m: '写入（5m）',
+    cacheWrite1h: '写入（1h）',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
