@@ -57,6 +57,8 @@ OpenAI 兼容 Messages 在尚未向客户端提交响应时，会把管理员临
 
 OpenAI/Composite 分组可启用 `force_openai_fast`，使可信认证快照中的 OpenAI 请求在没有显式服务层级时也先形成 `service_tier=priority`，并覆盖客户端提交的其它合法 tier。该组级意图仍要经过全局 Fast/Flex 规则，系统过滤或阻断拥有最终裁决权；API Key 的 `force_off` 也可删除组级注入。字段仅对 OpenAI/Composite 分组生效，切换到其它平台或从不可信上下文读取时必须归零/忽略。
 
+OpenAI 分组还可设置 `max_reasoning_effort` 与 `max_reasoning_effort_over_limit`。策略只处理客户端显式提供的 `reasoning.effort`、`reasoning_effort` 或 Messages 的 `output_config.effort`；缺省 effort 不会被桥接器补出的默认值误判为客户端请求。先按分组的模型范围映射（精确、前缀或后缀）得到有效档位，再比较 `minimal < low < medium < high < xhigh < max`：`downgrade`（默认）改写为上限，`deny` 返回本地 403 权限错误并标记为业务限制。复合 Key 在鉴权阶段已经选出具体 OpenAI 分组，因此沿用该分组策略；当前 fork 不重新开放 Composite 分组本身的推理配置。HTTP Responses/Chat、Messages 转换和 Responses WebSocket 的每个请求帧都必须执行同一裁决，且策略快照随 API Key 认证缓存传播。
+
 ## 可用性与缓存
 
 认证、分组、渠道和账号热路径使用缓存或调度快照降低数据库压力，但数据库配置和实时调度状态仍是权威来源。以下变更必须主动失效对应缓存或发布新快照：Key 状态/限额/映射变化，团队关系变化，分组平台/能力/倍率变化，渠道成员/映射/价格变化，以及账号状态、分组关系、凭据、代理、并发或资格变化。

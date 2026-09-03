@@ -5,6 +5,7 @@ import {
   createReasoningEffortMappingRow,
   normalizeReasoningEffortForPlatform,
   normalizeReasoningEffortMatchType,
+  normalizeReasoningEffortOverLimit,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
   reasoningEffortOptionsForPlatform,
@@ -117,6 +118,12 @@ describe("groupsReasoningEffort", () => {
     expect(normalizeReasoningEffortForPlatform("openai", " MAX ")).toBe("max");
     expect(normalizeReasoningEffortForPlatform("grok", "max")).toBe("");
     expect(normalizeReasoningEffortForPlatform("openai", "none")).toBe("");
+  });
+
+  it("normalizes the over-limit action with downgrade as the default", () => {
+    expect(normalizeReasoningEffortOverLimit(" DENY ")).toBe("deny");
+    expect(normalizeReasoningEffortOverLimit("block")).toBe("downgrade");
+    expect(normalizeReasoningEffortOverLimit(" ")).toBe("downgrade");
   });
 
   it("normalizes match type to exact, prefix, suffix, or empty", () => {

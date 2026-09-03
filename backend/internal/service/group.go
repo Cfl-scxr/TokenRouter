@@ -130,8 +130,8 @@ type Group struct {
 	// AllowedClientProtocols 是分组允许的完整客户端文本协议集合，空集合表示全部关闭。
 	AllowedClientProtocols []GroupClientProtocol
 	// AllowMessagesDispatch 是从协议集合派生并持久化的弃用兼容镜像。
-	AllowMessagesDispatch       bool
-	AllowLive                   bool
+	AllowMessagesDispatch bool
+	AllowLive             bool
 	// ForceOpenAIFast 强制 OpenAI/Composite 分组请求使用 service_tier=priority。
 	ForceOpenAIFast             bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
@@ -149,6 +149,8 @@ type Group struct {
 	// MaxReasoningEffort 限制实际生效的 OpenAI/Codex 推理强度。
 	// 空字符串表示不限制；支持 minimal/low/medium/high/xhigh/max。
 	MaxReasoningEffort string
+	// MaxReasoningEffortOverLimit 控制显式推理强度超过上限时降档或拒绝。
+	MaxReasoningEffortOverLimit string
 	// ReasoningEffortMappings 在应用上限前改写请求中显式指定的值。
 	ReasoningEffortMappings []ReasoningEffortMapping
 

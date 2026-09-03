@@ -42,6 +42,14 @@ func TestUpdateGroupRequestReasoningEffortMappingsTriState(t *testing.T) {
 	})
 }
 
+// TestGroupRequestReasoningEffortOverLimitAction 验证管理 API 保留显式超限动作。
+func TestGroupRequestReasoningEffortOverLimitAction(t *testing.T) {
+	var req UpdateGroupRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"max_reasoning_effort_over_limit":"deny"}`), &req))
+	require.NotNil(t, req.MaxReasoningEffortOverLimit)
+	require.Equal(t, "deny", *req.MaxReasoningEffortOverLimit)
+}
+
 func TestUpdateGroupRequestAdvancedSchedulerOverridesTriState(t *testing.T) {
 	t.Run("omitted means unchanged", func(t *testing.T) {
 		var req UpdateGroupRequest

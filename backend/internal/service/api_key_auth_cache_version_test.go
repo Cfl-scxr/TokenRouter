@@ -129,3 +129,17 @@ func TestAPIKeyServiceRejectsV33AuthSnapshotWithoutGroupOpenAIFast(t *testing.T)
 		t.Fatal("expected v33 auth snapshot to be rejected after group OpenAI Fast was added")
 	}
 }
+
+// TestAPIKeyServiceRejectsV34AuthSnapshotWithoutReasoningEffortOverLimit 验证旧快照不会缺少超限动作。
+func TestAPIKeyServiceRejectsV34AuthSnapshotWithoutReasoningEffortOverLimit(t *testing.T) {
+	svc := &APIKeyService{}
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-reasoning-over-limit", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 34},
+	})
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok || apiKey != nil {
+		t.Fatal("expected v34 auth snapshot to be rejected after reasoning effort over-limit action was added")
+	}
+}

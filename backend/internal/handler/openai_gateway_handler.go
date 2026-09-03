@@ -56,9 +56,12 @@ func newOpenAIWSLocalRoutingRejectedError(model string, err error) error {
 
 // shouldReportOpenAIWSProxyAccountFailure 排除明确的本地模型路由拒绝，其余代理错误维持现有上报行为。
 func shouldReportOpenAIWSProxyAccountFailure(err error) bool {
-	return err != nil &&
-		!errors.Is(err, errOpenAIWSLocalRoutingRejected) &&
-		!service.IsOpenAIWSSessionPreemptedError(err)
+	if err == nil || errors.Is(err, errOpenAIWSLocalRoutingRejected) || service.IsOpenAIWSSessionPreemptedError(err) {
+		return false
+	}
+	// 分组推理策略在发送上游前拒绝请求，不应污染账号健康状态。
+	var overLimit *service.ReasoningEffortOverLimitError
+	return !errors.As(err, &overLimit)
 }
 
 // openAIWSIngressEndedByClient reports whether a finished ingress WebSocket turn
@@ -479,11 +482,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
-	bindRequestedReasoningEffort(c, body, reqModel)
-	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
-		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
-			body = cappedBody
-		}
+	if cappedBody, changed, policyErr := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); policyErr != nil {
+		respondOpenAIReasoningEffortPolicyError(c, policyErr, h.errorResponse)
+		return
+	} else if changed {
+		body = cappedBody
 	}
 	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
 		body = normalizedBody
@@ -1193,7 +1196,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
-	bindRequestedReasoningEffort(c, body, reqModel)
+	bindOpenAIReasoningEffortPolicyForMessagesRequest(c, apiKey, body)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
@@ -1426,6 +1429,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				// 该错误已由 service 层写入本地 403；不把策略拒绝当成账号故障。
+				var overLimit *service.ReasoningEffortOverLimitError
+				if errors.As(err, &overLimit) {
+					reqLog.Info("openai_messages.reasoning_effort_policy_denied",
+						zap.String("reason", overLimit.Error()),
+					)
+					return
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if failoverClientGone(c) {
@@ -2558,17 +2569,20 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		var currentFastModePolicy atomic.Value
 		currentFastModePolicy.Store(apiKey.FastModePolicy)
 		maxReasoningEffort := ""
+		maxReasoningEffortOverLimit := ""
 		var reasoningEffortMappings []service.ReasoningEffortMapping
 		if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
 			maxReasoningEffort = apiKey.Group.MaxReasoningEffort
+			maxReasoningEffortOverLimit = apiKey.Group.MaxReasoningEffortOverLimit
 			reasoningEffortMappings = apiKey.Group.ReasoningEffortMappings
 		}
 		hooks := &service.OpenAIWSIngressHooks{
-			ClientLifecycleContext:  clientLifecycleCtx,
-			InitialRequestModel:     reqModel,
-			InitialTurnStartedAt:    firstTurnStartedAt,
-			MaxReasoningEffort:      maxReasoningEffort,
-			ReasoningEffortMappings: reasoningEffortMappings,
+			ClientLifecycleContext:      clientLifecycleCtx,
+			InitialRequestModel:         reqModel,
+			InitialTurnStartedAt:        firstTurnStartedAt,
+			MaxReasoningEffort:          maxReasoningEffort,
+			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
+			ReasoningEffortMappings:     reasoningEffortMappings,
 			ResolveFastModePolicy: func(_ int) string {
 				fallback, _ := currentFastModePolicy.Load().(string)
 				if h.apiKeyService == nil || strings.TrimSpace(apiKey.Key) == "" {
@@ -2865,6 +2879,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 			var closeErr *service.OpenAIWSClientCloseError
 			hasClientCloseErr := errors.As(err, &closeErr)
+			var overLimit *service.ReasoningEffortOverLimitError
+			if errors.As(err, &overLimit) {
+				// WS 策略拒绝属于本地业务限制，既不冷却账号，也不计入 SLA。
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			}
 			if openAIWSIngressEndedByClient(err) {
 				closedFields := []zap.Field{zap.Int64("account_id", account.ID)}
 				if hasClientCloseErr {

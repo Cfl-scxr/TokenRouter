@@ -742,6 +742,7 @@ export interface Group {
   capacity?: MarketplaceGroupCapacity
   rpm_limit?: number // 分组级 RPM 上限（0 表示不限制），设置后覆盖用户级 rpm_limit 兜底值
   max_reasoning_effort?: string // OpenAI/Codex 推理强度上限，空字符串表示不限制
+  max_reasoning_effort_over_limit?: string // 超过上限时 downgrade 或 deny
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
   is_default?: boolean
@@ -1007,6 +1008,7 @@ export interface CreateGroupRequest {
   model_routing_enabled?: boolean
   rpm_limit?: number
   max_reasoning_effort?: string
+  max_reasoning_effort_over_limit?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
@@ -1072,6 +1074,7 @@ export interface UpdateGroupRequest {
   model_routing_enabled?: boolean
   rpm_limit?: number
   max_reasoning_effort?: string
+  max_reasoning_effort_over_limit?: string
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean

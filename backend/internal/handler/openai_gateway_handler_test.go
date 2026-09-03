@@ -190,6 +190,16 @@ func TestShouldReportOpenAIWSProxyAccountFailure(t *testing.T) {
 		require.True(t, shouldReportOpenAIWSProxyAccountFailure(err))
 	})
 
+	t.Run("分组推理超限拒绝不惩罚账号", func(t *testing.T) {
+		overLimit := &service.ReasoningEffortOverLimitError{Requested: "high", Max: "low"}
+		err := service.NewOpenAIWSClientCloseError(
+			coderws.StatusPolicyViolation,
+			overLimit.Error(),
+			overLimit,
+		)
+		require.False(t, shouldReportOpenAIWSProxyAccountFailure(err))
+	})
+
 	t.Run("普通代理错误仍惩罚账号", func(t *testing.T) {
 		require.True(t, shouldReportOpenAIWSProxyAccountFailure(errors.New("upstream websocket read failed")))
 	})
