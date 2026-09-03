@@ -802,6 +802,8 @@ export interface Group {
 export interface AdminGroup extends Group {
   // 仅管理端可配置，公开分组接口不返回该策略。
   force_openai_fast?: boolean
+  // 仅管理端可配置，公开分组接口不返回该计费策略。
+  free_openai_fast?: boolean
   // 仅管理端可配置，公开分组接口不返回调度器模式。
   scheduler_type: GroupSchedulerType
   advanced_scheduler_overrides?: GroupAdvancedSchedulerOverrides
@@ -966,6 +968,7 @@ export interface CreateGroupRequest {
   session_isolation_enabled?: boolean
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
+  free_openai_fast?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
@@ -1032,6 +1035,7 @@ export interface UpdateGroupRequest {
   status?: 'active' | 'inactive'
   long_context_pricing_enabled?: boolean
   force_openai_fast?: boolean
+  free_openai_fast?: boolean
   model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean

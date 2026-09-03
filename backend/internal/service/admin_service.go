@@ -277,7 +277,9 @@ type CreateGroupInput struct {
 	AllowMessagesDispatch bool
 	AllowLive             bool
 	// ForceOpenAIFast 仅对 OpenAI/Composite 分组启用组级 Fast 强制策略。
-	ForceOpenAIFast             bool
+	ForceOpenAIFast bool
+	// FreeOpenAIFast 仅对 OpenAI/Composite 分组启用 Standard 计费策略。
+	FreeOpenAIFast              bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
@@ -365,7 +367,9 @@ type UpdateGroupInput struct {
 	AllowMessagesDispatch *bool
 	AllowLive             *bool
 	// ForceOpenAIFast 为 nil 时保留原值；仅对 OpenAI/Composite 分组生效。
-	ForceOpenAIFast             *bool
+	ForceOpenAIFast *bool
+	// FreeOpenAIFast 为 nil 时保留原值；仅对 OpenAI/Composite 分组生效。
+	FreeOpenAIFast              *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool

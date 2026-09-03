@@ -177,6 +177,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		},
 		AllowMessagesDispatch: true,
 		AllowLive:             true,
+		ForceOpenAIFast:       true,
+		FreeOpenAIFast:        true,
 		RequireOAuthOnly:      true,
 		RequirePrivacySet:     true,
 		DefaultMappedModel:    "gpt-5.4",
@@ -228,6 +230,8 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.ImagePrice4K, duplicate.ImagePrice4K)
 	require.Equal(t, source.VideoModelPrices, duplicate.VideoModelPrices)
 	require.Equal(t, source.WebSearchPricePerCall, duplicate.WebSearchPricePerCall)
+	require.Equal(t, source.ForceOpenAIFast, duplicate.ForceOpenAIFast)
+	require.Equal(t, source.FreeOpenAIFast, duplicate.FreeOpenAIFast)
 	require.Equal(t, source.FallbackGroupID, duplicate.FallbackGroupID)
 	require.Equal(t, source.UnavailableFallbackGroupID, duplicate.UnavailableFallbackGroupID)
 	require.Equal(t, source.ModelRouting, duplicate.ModelRouting)

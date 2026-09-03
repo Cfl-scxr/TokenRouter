@@ -208,11 +208,14 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *usageBill
 	if p.Cost.ActualCost > 0 {
 		cmd.BillableAmountUSD = p.Cost.ActualCost
 	}
-	if p.Cost.TotalCost > 0 {
-		cmd.BaseAmountUSD = p.Cost.TotalCost
+	baseAmount := p.Cost.TotalCost
+	if p.BillingBaseAmountUSD != nil {
+		baseAmount = *p.BillingBaseAmountUSD
+	}
+	if baseAmount > 0 {
+		cmd.BaseAmountUSD = baseAmount
 		applyUsageBillingRateMultipliers(cmd, p)
 	}
-
 	if p.shouldDeductAPIKeyQuota() {
 		cmd.APIKeyQuotaCost = p.Cost.ActualCost
 	}
@@ -245,11 +248,18 @@ func resolveUsageBillingAccountQuotaCost(usageLog *UsageLog, p *usageBillingPara
 }
 
 func applyUsageBillingRateMultipliers(cmd *UsageBillingCommand, p *usageBillingParams) {
-	if cmd == nil || p == nil || p.Cost == nil || p.Cost.TotalCost <= 0 {
+	if cmd == nil || p == nil || p.Cost == nil {
+		return
+	}
+	baseAmount := p.Cost.TotalCost
+	if p.BillingBaseAmountUSD != nil {
+		baseAmount = *p.BillingBaseAmountUSD
+	}
+	if baseAmount <= 0 {
 		return
 	}
 
-	effectiveRate := p.Cost.ActualCost / p.Cost.TotalCost
+	effectiveRate := p.Cost.ActualCost / baseAmount
 	if mode := strings.TrimSpace(p.Cost.BillingMode); mode != "" && mode != string(BillingModeToken) {
 		// 非 token 模式已在 ActualCost 中应用图片、视频或按次倍率；默认 allocation 必须沿用该倍率。
 		cmd.SubscriptionRateMultiplier = effectiveRate

@@ -147,6 +147,23 @@ func openAIUsageBillingModel(result *OpenAIForwardResult, fields ChannelUsageFie
 	return billingModel
 }
 
+// groupBillsOpenAIFastAtStandard 判断分组免费 Fast 是否适用于当前 OpenAI 账号和计费档位。
+// 分组策略只改变用户侧价格，不改变实际发往上游的 service_tier。
+func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTier string) bool {
+	if apiKey == nil || apiKey.Group == nil || !apiKey.Group.FreeOpenAIFast {
+		return false
+	}
+	if account == nil || !account.IsOpenAI() || !groupSupportsOpenAIFast(apiKey.Group.Platform) {
+		return false
+	}
+	switch normalizeBillingServiceTier(serviceTier) {
+	case "priority", "fast":
+		return true
+	default:
+		return false
+	}
+}
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -275,6 +292,40 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			zap.Int64("account_id", account.ID),
 		).Warn("openai_usage.pricing_missing_record_zero_cost", zap.Error(err))
 		cost = &CostBreakdown{BillingMode: string(BillingModeToken)}
+	}
+
+	// 免费 Fast 只减免用户侧费用。保留 Fast 的 TotalCost 供账号统计和审计，
+	// 并记录 Standard 基础金额供统一订阅/余额分配使用。
+	var billingBaseAmountUSD *float64
+	if groupBillsOpenAIFastAtStandard(apiKey, billingAccount, serviceTier) && cost != nil {
+		standardCost, standardErr := s.calculateOpenAIRecordUsageCostAt(
+			ctx,
+			result,
+			apiKey,
+			billingModels,
+			multiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			tokens,
+			"",
+			rateNow,
+		)
+		if standardErr != nil {
+			if !isUsagePricingUnavailableError(standardErr) {
+				return standardErr
+			}
+			// 标准价不可用时沿用既有缺价行为：不向用户扣费，但保留 Fast
+			// 成本用于账号统计，避免一次新策略把成功请求变成计费错误。
+			logger.L().With(
+				zap.String("component", "service.openai_gateway"),
+				zap.String("request_id", result.RequestID),
+			).Warn("openai_usage.standard_pricing_missing_free_fast_zero_cost", zap.Error(standardErr))
+			standardCost = &CostBreakdown{}
+		}
+		standardBase := standardCost.TotalCost
+		billingBaseAmountUSD = &standardBase
+		cost.ActualCost = standardCost.ActualCost
 	}
 
 	// 预填 billing_type 仅用于 simple mode / 持久化前对象，真实扣费结果会在统一扣费后回填。
@@ -451,6 +502,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			BalanceRateMultiplier:           balanceMultiplier,
 			APIKeyService:                   input.APIKeyService,
 			Platform:                        quotaPlatform,
+			BillingBaseAmountUSD:            billingBaseAmountUSD,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

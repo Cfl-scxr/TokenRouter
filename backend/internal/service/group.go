@@ -133,7 +133,9 @@ type Group struct {
 	AllowMessagesDispatch bool
 	AllowLive             bool
 	// ForceOpenAIFast 强制 OpenAI/Composite 分组请求使用 service_tier=priority。
-	ForceOpenAIFast             bool
+	ForceOpenAIFast bool
+	// FreeOpenAIFast 让 OpenAI/Composite 分组的 Fast 请求按 Standard 价格向用户计费。
+	FreeOpenAIFast              bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
 	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
 	DefaultMappedModel          string

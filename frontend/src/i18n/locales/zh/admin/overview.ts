@@ -1230,7 +1230,9 @@ affiliates: {
       openaiFast: {
         title: 'OpenAI Fast',
         force: '强制使用 Fast 优先级',
-        hint: '启用后，此 OpenAI 或 Composite 分组的请求会使用 service_tier=priority；全局 Fast/Flex 策略和 API Key 覆盖仍然有效。'
+        hint: '启用后，此 OpenAI 或 Composite 分组的请求会使用 service_tier=priority；全局 Fast/Flex 策略和 API Key 覆盖仍然有效。',
+        free: '免费 Fast',
+        freeHint: '请求仍使用 priority 档位，但客户实际费用按同一请求的 Standard 价格计算。'
       },
       invalidRequestFallback: {
         title: '无效请求兜底分组',

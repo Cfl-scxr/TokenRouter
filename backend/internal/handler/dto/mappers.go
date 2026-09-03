@@ -238,6 +238,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
 		ForceOpenAIFast:             g.ForceOpenAIFast,
+		FreeOpenAIFast:              g.FreeOpenAIFast,
 		SchedulerType:               string(g.SchedulerType),
 		AdvancedSchedulerOverrides:  service.CloneGroupAdvancedSchedulerOverrides(g.AdvancedSchedulerOverrides),
 		ModelPricing:                g.ModelPricing,

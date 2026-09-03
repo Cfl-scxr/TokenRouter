@@ -236,6 +236,8 @@ type AdminGroup struct {
 	Group
 	// ForceOpenAIFast 仅管理端可见，用于控制 OpenAI/Composite 分组的 Fast 策略。
 	ForceOpenAIFast bool `json:"force_openai_fast"`
+	// FreeOpenAIFast 仅管理端可见，用于控制 OpenAI/Composite 分组的 Fast 计费。
+	FreeOpenAIFast bool `json:"free_openai_fast"`
 	// SchedulerType 仅管理端可见，用于配置分组调度器。
 	SchedulerType string `json:"scheduler_type"`
 	// AdvancedSchedulerOverrides 仅管理端可见；空字段继承网关通用设置。

@@ -57,6 +57,8 @@ OpenAI 兼容 Messages 在尚未向客户端提交响应时，会把管理员临
 
 OpenAI/Composite 分组可启用 `force_openai_fast`，使可信认证快照中的 OpenAI 请求在没有显式服务层级时也先形成 `service_tier=priority`，并覆盖客户端提交的其它合法 tier。该组级意图仍要经过全局 Fast/Flex 规则，系统过滤或阻断拥有最终裁决权；API Key 的 `force_off` 也可删除组级注入。字段仅对 OpenAI/Composite 分组生效，切换到其它平台或从不可信上下文读取时必须归零/忽略。
 
+同一范围的分组还可启用 `free_openai_fast`。当最终使用的是 OpenAI 账号且计费档位为 `priority`/`fast` 时，网关保持发往上游的 Fast 档位不变，只用同一分组、渠道、长上下文和峰值规则重新计算 Standard 用户价格。Usage Log 的 `total_cost`、账号统计和账号额度继续保留 Fast 成本；`actual_cost`、余额/订阅分配和 API Key 配额使用 Standard 价格。缺少 Standard 定价时沿用既有缺价零成本记录路径，不把请求改写成普通上游请求；其它平台、普通档位和不可信认证上下文必须忽略该字段。
+
 OpenAI 分组还可设置 `max_reasoning_effort` 与 `max_reasoning_effort_over_limit`。策略只处理客户端显式提供的 `reasoning.effort`、`reasoning_effort` 或 Messages 的 `output_config.effort`；缺省 effort 不会被桥接器补出的默认值误判为客户端请求。先按分组的模型范围映射（精确、前缀或后缀）得到有效档位，再比较 `minimal < low < medium < high < xhigh < max`：`downgrade`（默认）改写为上限，`deny` 返回本地 403 权限错误并标记为业务限制。复合 Key 在鉴权阶段已经选出具体 OpenAI 分组，因此沿用该分组策略；当前 fork 不重新开放 Composite 分组本身的推理配置。HTTP Responses/Chat、Messages 转换和 Responses WebSocket 的每个请求帧都必须执行同一裁决，且策略快照随 API Key 认证缓存传播。
 
 ## 可用性与缓存
@@ -76,7 +78,7 @@ OpenAI 分组还可设置 `max_reasoning_effort` 与 `max_reasoning_effort_over_
 
 ## 价格口径
 
-一次请求同时存在用户扣费和账号成本统计两个口径。用户扣费的基础价格按分组逐模型定价、渠道定价、内置模型定价的顺序解析，再叠加分组和订阅/用户倍率；最终路由账号不能改变用户价格。分组逐模型条目支持 token、按次、图片和视频模式，命中后覆盖渠道与内置价格；条目自身的最终价格倍率和 Fast 模式倍率先在解析器中应用，再参与公开展示和结算。账号 `rate_multiplier` 只影响账号维度的成本统计和账号额度累计，不应偷偷改变用户/API Key 扣款。
+一次请求同时存在用户扣费和账号成本统计两个口径。用户扣费的基础价格按分组逐模型定价、渠道定价、内置模型定价的顺序解析，再叠加分组和订阅/用户倍率；最终路由账号不能改变用户价格。分组逐模型条目支持 token、按次、图片和视频模式，命中后覆盖渠道与内置价格；条目自身的最终价格倍率和 Fast 模式倍率先在解析器中应用，再参与公开展示和结算。启用 `free_openai_fast` 时只把用户资金分配的基础金额切换到 Standard，不能把 Fast 的账号统计基数或 Usage Log 明细覆盖掉。账号 `rate_multiplier` 只影响账号维度的成本统计和账号额度累计，不应偷偷改变用户/API Key 扣款。
 
 Kimi、Zhipu、DeepSeek 账号的计费候选不能把客户端 `claude`、`opus`、`sonnet`、`haiku` 名称送入全局 Claude/Sonnet 兜底价，因为兼容 Anthropic 请求不代表实际提供 Claude 模型。只有分组或渠道对该候选配置了显式价格时才保留；账号/渠道映射后的真实 CN 模型仍按正常优先级解析。候选全部被过滤或没有任何非空模型时返回 `ErrModelPricingUnavailable`，沿用零成本告警并保留 Usage Log 的既有路径，不得静默按 Claude 价收费，也不得因定价未知丢弃整条使用记录。
 

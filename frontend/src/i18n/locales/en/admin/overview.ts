@@ -1232,7 +1232,9 @@ affiliates: {
       openaiFast: {
         title: 'OpenAI Fast',
         force: 'Force Fast priority',
-        hint: 'When enabled, requests in this OpenAI or Composite group use service_tier=priority. Global Fast/Flex policy and API-key overrides still apply.'
+        hint: 'When enabled, requests in this OpenAI or Composite group use service_tier=priority. Global Fast/Flex policy and API-key overrides still apply.',
+        free: 'Free Fast',
+        freeHint: 'Fast requests still use the priority tier, but customers are charged the equivalent Standard price.'
       },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',

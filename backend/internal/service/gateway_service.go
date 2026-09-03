@@ -1926,4 +1926,7 @@ type usageBillingParams struct {
 	BalanceRateMultiplier           float64
 	APIKeyService                   APIKeyQuotaUpdater
 	Platform                        string // 来自 APIKey 关联 Group 的平台标识
+	// BillingBaseAmountUSD 是用户资金分配使用的未倍率基础金额；nil 时沿用 Cost.TotalCost。
+	// 免费 Fast 需要把用户基础价切换为 Standard，同时保留 Fast 的账号统计基础成本。
+	BillingBaseAmountUSD *float64
 }
