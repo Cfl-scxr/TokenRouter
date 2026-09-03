@@ -167,7 +167,7 @@ func TestAdaptiveProtocolRoutesMessagesToNativeAnthropic(t *testing.T) {
 
 func TestAdaptiveProtocolRoutesKimiResponsesToNativeResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"k3-256k","input":"hello","store":true,"previous_response_id":"resp_old","stream":false}`)
+	body := []byte(`{"model":"k3-256k","input":"hello","reasoning":{"effort":"none"},"store":true,"previous_response_id":"resp_old","stream":false}`)
 	upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
 	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 	account := adaptiveProtocolTestAccount(PlatformKimi, map[string]any{
@@ -181,6 +181,7 @@ func TestAdaptiveProtocolRoutesKimiResponsesToNativeResponses(t *testing.T) {
 	require.Equal(t, "http://responses.example/v1/responses", upstream.lastReq.URL.String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
 }

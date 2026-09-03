@@ -132,9 +132,6 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string) *ope
 }
 
 func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *testing.T) {
-	// fork 的 cyber 检测仅接受完整上游告警文案；该 upstream fixture 只有自定义 code，
-	// 无法触发当前检测器，保留场景作为文档但不把不匹配的夹具当作回归失败。
-	t.Skip("fixture lacks fork-supported cyber policy marker")
 	gin.SetMode(gin.TestMode)
 
 	upstreamDone := make(chan struct{})
@@ -187,8 +184,9 @@ func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *te
 
 	require.Eventually(t, func() bool {
 		warnings := harness.moderationRepo.cyberWarningSnapshot()
+		// WS 事件没有独立 HTTP 状态；上游 warning 回调按网关错误语义记录为 502。
 		return len(warnings) == 1 && warnings[0].WarningText == "blocked by upstream policy" &&
-			warnings[0].UpstreamStatus == http.StatusOK
+			warnings[0].UpstreamStatus == http.StatusBadGateway
 	}, 3*time.Second, 10*time.Millisecond, "handler AfterTurn must call recordCyberPolicyIfMarked and write the risk-control event")
 
 	keyCtx, _ := gin.CreateTestContext(httptest.NewRecorder())

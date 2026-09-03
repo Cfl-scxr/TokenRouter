@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/TokenFlux/TokenRouter/internal/pkg/ctxkey"
@@ -52,6 +53,76 @@ func buildOpenAIResponsesURLForPlatform(platform, base string) string {
 		return buildOpenAIEndpointURL(base, "/responses")
 	}
 	return buildOpenAIResponsesURL(base)
+}
+
+// isOfficialOpenAIModelsBaseURL 只识别官方 OpenAI 主机，避免兼容中继误用官方字段语义。
+func isOfficialOpenAIModelsBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	return err == nil && strings.EqualFold(u.Hostname(), "api.openai.com")
+}
+
+// shouldPreserveOpenAIResponsesNoneReasoningEffort 判断请求是否仍需保留官方目录的 none 占位值。
+func shouldPreserveOpenAIResponsesNoneReasoningEffort(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsOpenAIOAuthLike() {
+		return true
+	}
+	if !account.IsOpenAIApiKey() {
+		return false
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
+}
+
+// filterOpenAIResponsesNoneReasoningEffortForAccount 删除兼容上游不应接收的目录占位值。
+// 官方 OpenAI 请求保留 none，避免改变其原生请求语义。
+func filterOpenAIResponsesNoneReasoningEffortForAccount(account *Account, body []byte) ([]byte, error) {
+	if len(body) == 0 || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
+		return body, nil
+	}
+
+	out := body
+	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
+		effort := gjson.GetBytes(out, path)
+		if effort.Type != gjson.String || !strings.EqualFold(strings.TrimSpace(effort.String()), "none") {
+			continue
+		}
+		next, err := sjson.DeleteBytes(out, path)
+		if err != nil {
+			return body, fmt.Errorf("strip %s none placeholder: %w", path, err)
+		}
+		out = next
+	}
+	if reasoning := gjson.GetBytes(out, "reasoning"); reasoning.IsObject() && len(reasoning.Map()) == 0 {
+		next, err := sjson.DeleteBytes(out, "reasoning")
+		if err != nil {
+			return body, fmt.Errorf("strip empty reasoning object: %w", err)
+		}
+		out = next
+	}
+	return out, nil
+}
+
+// deleteOpenAIResponsesNoneReasoningEffortFromObject 删除 WS bridge 中的 none 占位字段。
+func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body map[string]any) {
+	if body == nil || shouldPreserveOpenAIResponsesNoneReasoningEffort(account) {
+		return
+	}
+	if effort, ok := body["reasoning_effort"].(string); ok && strings.EqualFold(strings.TrimSpace(effort), "none") {
+		delete(body, "reasoning_effort")
+	}
+	reasoning, ok := body["reasoning"].(map[string]any)
+	if !ok {
+		return
+	}
+	if effort, ok := reasoning["effort"].(string); ok && strings.EqualFold(strings.TrimSpace(effort), "none") {
+		delete(reasoning, "effort")
+	}
+	if len(reasoning) == 0 {
+		delete(body, "reasoning")
+	}
 }
 
 // normalizeDeepSeekResponsesRequestBody 适配无状态 CN Responses 端点：

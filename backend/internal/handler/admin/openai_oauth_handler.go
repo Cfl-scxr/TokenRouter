@@ -611,7 +611,7 @@ func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
 		slog.Warn("openai_quota_reset_cache_refresh_failed", "account_id", accountID, "error", usageErr)
 		resetResponse.WarningCode = openAIQuotaResetWarningCacheRefreshFailed
 	default:
-		if err := h.quotaService.CacheResetCreditsSnapshot(postCtx, accountID, usage.RateLimitResetCredits); err != nil {
+		if err := h.quotaService.CachePostResetSnapshot(postCtx, accountID, usage); err != nil {
 			slog.Warn("openai_quota_reset_cache_refresh_failed", "account_id", accountID, "error", err)
 			resetResponse.WarningCode = openAIQuotaResetWarningCacheRefreshFailed
 		} else {

@@ -1575,6 +1575,8 @@ func (r *contentModerationHandlerTestRepo) CountFlaggedByUserSince(ctx context.C
 
 func (r *contentModerationHandlerTestRepo) CreateCyberWarning(ctx context.Context, warning *service.ContentModerationCyberWarning) error {
 	if warning != nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 		r.cyberWarnings = append(r.cyberWarnings, *warning)
 	}
 	return nil
@@ -1585,6 +1587,8 @@ func (r *contentModerationHandlerTestRepo) CreateCyberWarningAndApplyUserBan(ctx
 		if warning.ViolationCount <= 0 {
 			warning.ViolationCount = 1
 		}
+		r.mu.Lock()
+		defer r.mu.Unlock()
 		r.cyberWarnings = append(r.cyberWarnings, *warning)
 	}
 	return false, nil
