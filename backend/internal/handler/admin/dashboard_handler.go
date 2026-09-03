@@ -23,7 +23,7 @@ func parseOptionalBoolDashboardFilter(c *gin.Context, key string) (*bool, error)
 	}
 	value, err := strconv.ParseBool(raw)
 	if err != nil {
-		return nil, fmt.Errorf("Invalid %s value, use true or false", key)
+		return nil, fmt.Errorf("invalid %s value, use true or false", key)
 	}
 	return &value, nil
 }

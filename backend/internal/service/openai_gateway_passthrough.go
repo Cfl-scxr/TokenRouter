@@ -1165,7 +1165,8 @@ func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
 	return false
 }
 
-// openAIStreamDataStartsSemanticTTFT 保留历史兼容口径：首个非预置语义事件即算首输出。
+// openAIStreamDataStartsSemanticTTFT 使用客户端语义事件作为 TTFT 起点；空的
+// reasoning/content 结构只表示协议进度，不能提交首输出阶段或阻断故障转移。
 func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" || trimmed == "[DONE]" {
@@ -1185,7 +1186,7 @@ func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
 		payload := []byte(trimmed)
 		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
 	default:
-		return !openAIStreamEventIsPreamble(eventType)
+		return openAIStreamDataStartsClientOutput(trimmed, eventType)
 	}
 }
 

@@ -842,6 +842,7 @@ func TestAPIContracts(t *testing.T) {
 								"model": "claude-3",
 								"request_type": "stream",
 								"openai_ws_mode": false,
+								"native_compaction_v2": false,
 								"group_id": null,
 								"subscription_id": null,
 							"input_tokens": 10,
@@ -1225,6 +1226,7 @@ func TestAPIContracts(t *testing.T) {
 								"openai_fast_policy_settings": {
 									"rules": []
 								},
+								"openai_ttft_mode": "semantic",
 								"user_prompt_replacement_config": {
 									"enabled": true,
 									"rules": [
@@ -1584,6 +1586,7 @@ func TestAPIContracts(t *testing.T) {
 								"openai_fast_policy_settings": {
 									"rules": []
 								},
+								"openai_ttft_mode": "semantic",
 								"user_prompt_replacement_config": {
 									"enabled": true,
 									"rules": [

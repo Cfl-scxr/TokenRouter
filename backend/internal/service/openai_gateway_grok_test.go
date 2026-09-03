@@ -962,7 +962,8 @@ func TestForwardGrokResponsesCompactRoundTrip(t *testing.T) {
 	require.Equal(t, "reasoning.encrypted_content", gjson.GetBytes(upstream.lastBody, "include.0").String())
 	require.Equal(t, "compact this", gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
 	require.Contains(t, gjson.GetBytes(upstream.lastBody, "input.1.content.0.text").String(), "Primary Request and Intent")
-	require.Equal(t, "9007199254740993", gjson.GetBytes(upstream.lastBody, "metadata.large_id").Raw)
+	// Grok Responses 不支持 OpenAI metadata，兼容层在出站前明确剥离该字段。
+	require.False(t, gjson.GetBytes(upstream.lastBody, "metadata").Exists())
 	require.Equal(t, "compaction", gjson.Get(recorder.Body.String(), "output.0.type").String())
 	require.Equal(t, "compact-state", gjson.Get(recorder.Body.String(), "output.0.encrypted_content").String())
 	require.Equal(t, "compact summary", gjson.Get(recorder.Body.String(), "output.0.summary.0.text").String())

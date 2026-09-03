@@ -5,7 +5,6 @@ import (
 
 	"github.com/TokenFlux/TokenRouter/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 )
 
 // bindRequestedReasoningEffort 在任何策略改写前保存客户端请求的档位。
@@ -18,11 +17,6 @@ func bindRequestedReasoningEffort(c *gin.Context, body []byte, model string) {
 		return
 	}
 	c.Request = c.Request.WithContext(service.WithRequestedReasoningEffort(c.Request.Context(), *effort))
-}
-
-// bindRequestedReasoningEffortFromBody 是只拿到原始 body 时的便捷入口。
-func bindRequestedReasoningEffortFromBody(c *gin.Context, body []byte) {
-	bindRequestedReasoningEffort(c, body, strings.TrimSpace(gjson.GetBytes(body, "model").String()))
 }
 
 // stampOpenAIRequestedReasoningEffort 将请求 context 中的档位写入转发结果。

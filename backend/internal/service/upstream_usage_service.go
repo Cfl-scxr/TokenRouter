@@ -2119,11 +2119,6 @@ func (c *upstreamUsageHTTPClient) getURL(ctx context.Context, endpoint string, a
 	return c.getURLWithBearer(ctx, endpoint, token, "")
 }
 
-// getURLWithHeader 请求固定的认证头；仅由内置适配器调用，调用方不能注入任意路径或头模板。
-func (c *upstreamUsageHTTPClient) getURLWithHeader(ctx context.Context, endpoint, headerName, headerValue string) ([]byte, int, error) {
-	return c.getURLWithHeaders(ctx, endpoint, map[string]string{headerName: headerValue})
-}
-
 // getURLWithHeaders 请求内置适配器声明的固定请求头。
 // 账号级覆写先应用、再被固定头覆盖，避免探测请求改变认证或团队身份。
 func (c *upstreamUsageHTTPClient) getURLWithHeaders(ctx context.Context, endpoint string, fixedHeaders map[string]string) ([]byte, int, error) {

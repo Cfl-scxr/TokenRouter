@@ -1273,13 +1273,14 @@ func TestOpenAIGatewayServiceRecordUsage_LongContextBillingIgnoresLegacyAccountE
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-			accountRepo := &openAIRecordUsageAccountRepoStub{account: &Account{ID: parentID}}
+			accountRepo := &openAIRecordUsageAccountRepoStub{account: &Account{ID: parentID, Platform: PlatformOpenAI, Type: AccountTypeOAuth}}
 			svc := newOpenAIRecordUsageServiceForTest(
 				usageRepo,
 				&openAIRecordUsageUserRepoStub{},
 				&openAIRecordUsageSubRepoStub{},
 				nil,
 			)
+			swapInOpenAILadderCatalog(t, svc)
 			svc.accountRepo = accountRepo
 
 			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
@@ -1306,9 +1307,23 @@ func TestOpenAIGatewayServiceRecordUsage_LongContextBillingIgnoresLegacyAccountE
 			billingRepo := requireOpenAIRecordUsageBillingRepoStub(t, svc)
 			require.Equal(t, 1, billingRepo.calls)
 			require.InDelta(t, usageRepo.lastLog.ActualCost, billingRepo.lastCmd.BillableAmountUSD, 1e-10)
-			require.Zero(t, accountRepo.calls, "用量结算不得为读取账号计费开关查询 Spark 母账号")
+			// 只有影子结算需要读取母账号解析凭据；该读取不再用于长上下文开关判断。
+			wantAccountRepoCalls := 0
+			if tt.account.IsShadow() {
+				wantAccountRepoCalls = 1
+			}
+			require.Equal(t, wantAccountRepoCalls, accountRepo.calls)
 		})
 	}
+}
+
+// swapInOpenAILadderCatalog 给测试服务换上带 above_272k 阶梯字段的目录；
+// 静态兜底价已不再携带 OpenAI 长上下文规则。
+func swapInOpenAILadderCatalog(t *testing.T, svc *OpenAIGatewayService) {
+	t.Helper()
+	cfg := &config.Config{}
+	cfg.Default.RateMultiplier = 1.1
+	svc.billingService = NewBillingService(cfg, newStubPricingServiceFromJSON(t, openAILadderCatalogJSON))
 }
 
 func TestOpenAIGatewayServiceRecordUsage_GroupControlsLongContextBilling(t *testing.T) {
@@ -1331,6 +1346,7 @@ func TestOpenAIGatewayServiceRecordUsage_GroupControlsLongContextBilling(t *test
 				&openAIRecordUsageSubRepoStub{},
 				nil,
 			)
+			swapInOpenAILadderCatalog(t, svc)
 			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
 			groupID := int64(1)
 			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
