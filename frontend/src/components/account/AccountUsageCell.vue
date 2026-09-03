@@ -1729,10 +1729,6 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
   return makeQuotaBar(props.account.quota_used ?? 0, limit)
 })
 
-const handleQuotaResetAccountUpdated = (account: Account) => {
-  emit('account-updated', account)
-}
-
 const handleOllamaCloudUsageUpdated = (state: NonNullable<Account['ollama_cloud_usage']>) => {
   emit('account-updated', { ...props.account, ollama_cloud_usage: state })
 }
