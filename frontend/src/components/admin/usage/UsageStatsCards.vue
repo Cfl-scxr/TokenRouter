@@ -33,11 +33,12 @@
               >
                 <span class="mb-2 block font-medium text-gray-900 dark:text-white">
                   {{ cacheDetailLabel() }}
-              </span>
-              <span class="flex items-center justify-between gap-3">
-                <span>{{ t('usage.cacheCreationTokensLabel') }}</span>
-                <span class="tabular-nums">
-                  {{ formatTokens(stats?.total_cache_creation_tokens || 0) }}
+                </span>
+                <span class="flex items-center justify-between gap-3">
+                  <span>{{ t('usage.cacheCreationTokensLabel') }}</span>
+                  <span class="tabular-nums">
+                    {{ formatTokens(stats?.total_cache_creation_tokens || 0) }}
+                  </span>
                 </span>
                 <span class="mt-1 flex items-center justify-between gap-3">
                   <span>{{ t('usage.cacheReadTokensLabel') }}</span>

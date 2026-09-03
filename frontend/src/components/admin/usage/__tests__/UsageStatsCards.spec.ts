@@ -80,6 +80,7 @@ describe('UsageStatsCards', () => {
       },
       global: {
         stubs: {
+          BalanceIcon: true,
           Icon: true,
         },
       },
@@ -88,9 +89,7 @@ describe('UsageStatsCards', () => {
     const tooltip = wrapper.findAll('span').find((el) => el.classes().includes('group-hover:block'))
 
     expect(tooltip).toBeDefined()
-    // `opacity-0` hides the tooltip visually but keeps it in the layout, so its
-    // fixed width still widens the document and causes horizontal scrolling on
-    // narrow screens. `hidden` (display: none) takes it out of the flow.
+    // `opacity-0` 仅隐藏视觉内容，固定宽度仍会撑开窄屏；`hidden` 会把提示框移出布局流。
     expect(tooltip?.classes()).toContain('hidden')
     expect(tooltip?.classes()).not.toContain('opacity-0')
   })
