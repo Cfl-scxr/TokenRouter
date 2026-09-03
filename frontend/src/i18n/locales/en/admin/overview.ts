@@ -1225,6 +1225,11 @@ affiliates: {
         unsupportedMessage: 'This TokenRouter server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
       },
+      openaiFast: {
+        title: 'OpenAI Fast',
+        force: 'Force Fast priority',
+        hint: 'When enabled, requests in this OpenAI or Composite group use service_tier=priority. Global Fast/Flex policy and API-key overrides still apply.'
+      },
       invalidRequestFallback: {
         title: 'Invalid Request Fallback Group',
         hint: 'Triggered only when upstream explicitly returns prompt too long. Leave empty to disable fallback.',

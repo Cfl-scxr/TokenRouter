@@ -143,6 +143,7 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		AllowedClientProtocols:          cloneGroupClientProtocols(source.AllowedClientProtocols),
 		AllowMessagesDispatch:           source.Platform == PlatformOpenAI && source.AllowsClientProtocol(GroupClientProtocolAnthropicMessages),
 		AllowLive:                       source.AllowLive,
+		ForceOpenAIFast:                 source.ForceOpenAIFast,
 		RequireOAuthOnly:                source.RequireOAuthOnly,
 		RequirePrivacySet:               source.RequirePrivacySet,
 		DefaultMappedModel:              source.DefaultMappedModel,

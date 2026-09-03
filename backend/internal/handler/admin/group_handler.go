@@ -99,8 +99,10 @@ type CreateGroupRequest struct {
 	// 客户端文本协议完整准入集合；nil 表示创建时采用平台默认值。
 	AllowedClientProtocols []service.GroupClientProtocol `json:"allowed_client_protocols"`
 	// OpenAI Messages 旧兼容开关。
-	AllowMessagesDispatch       bool                                      `json:"allow_messages_dispatch"`
-	AllowLive                   bool                                      `json:"allow_live"`
+	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
+	AllowLive             bool `json:"allow_live"`
+	// OpenAI/Composite 分组是否强制请求使用 Fast 优先级。
+	ForceOpenAIFast             bool                                      `json:"force_openai_fast"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
@@ -175,8 +177,10 @@ type UpdateGroupRequest struct {
 	// nil 表示不修改，空数组表示显式关闭全部文本协议（所有平台均合法）。
 	AllowedClientProtocols *[]service.GroupClientProtocol `json:"allowed_client_protocols"`
 	// OpenAI Messages 旧兼容开关。
-	AllowMessagesDispatch       *bool                                      `json:"allow_messages_dispatch"`
-	AllowLive                   *bool                                      `json:"allow_live"`
+	AllowMessagesDispatch *bool `json:"allow_messages_dispatch"`
+	AllowLive             *bool `json:"allow_live"`
+	// OpenAI/Composite 分组是否强制请求使用 Fast 优先级。
+	ForceOpenAIFast             *bool                                      `json:"force_openai_fast"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
@@ -363,6 +367,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		AllowedClientProtocols:          req.AllowedClientProtocols,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
+		ForceOpenAIFast:                 req.ForceOpenAIFast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
@@ -495,6 +500,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		AllowedClientProtocols:          req.AllowedClientProtocols,
 		AllowMessagesDispatch:           req.AllowMessagesDispatch,
 		AllowLive:                       req.AllowLive,
+		ForceOpenAIFast:                 req.ForceOpenAIFast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,

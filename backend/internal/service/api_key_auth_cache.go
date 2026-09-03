@@ -151,8 +151,10 @@ type APIKeyAuthGroupSnapshot struct {
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
 
 	// AllowedClientProtocols 不使用 omitempty，确保空集合按 [] 写入快照。
-	AllowedClientProtocols      []GroupClientProtocol             `json:"allowed_client_protocols"`
-	AllowLive                   bool                              `json:"allow_live"`
+	AllowedClientProtocols []GroupClientProtocol `json:"allowed_client_protocols"`
+	AllowLive              bool                  `json:"allow_live"`
+	// ForceOpenAIFast 保留组级 OpenAI Fast 策略，供请求期无需回源即可执行。
+	ForceOpenAIFast             bool                              `json:"force_openai_fast"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`
 	ModelsListConfig            GroupModelsListConfig             `json:"models_list_config,omitempty"`

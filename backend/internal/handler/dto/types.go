@@ -232,6 +232,8 @@ type SubscriptionPlanGroup struct {
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
+	// ForceOpenAIFast 仅管理端可见，用于控制 OpenAI/Composite 分组的 Fast 策略。
+	ForceOpenAIFast bool `json:"force_openai_fast"`
 	// SchedulerType 仅管理端可见，用于配置分组调度器。
 	SchedulerType string `json:"scheduler_type"`
 	// AdvancedSchedulerOverrides 仅管理端可见；空字段继承网关通用设置。

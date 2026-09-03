@@ -1612,6 +1612,37 @@
             </div>
           </div>
         </div>
+        <!-- OpenAI Fast 组级强制策略（仅 OpenAI/Composite 平台） -->
+        <div
+          v-if="supportsGroupOpenAIFast(createForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+          data-testid="create-openai-fast"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiFast.title") }}
+          </h4>
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.force") }}
+            </label>
+            <button
+              type="button"
+              :aria-pressed="createForm.force_openai_fast"
+              @click="createForm.force_openai_fast = !createForm.force_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="createForm.force_openai_fast ? 'group-switch-active' : 'bg-gray-300 dark:bg-dark-600'"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="createForm.force_openai_fast ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+        </div>
+
         <!-- OpenAI Live 开关（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -3445,6 +3476,37 @@
             </div>
           </div>
         </div>
+        <!-- OpenAI Fast 组级强制策略（仅 OpenAI/Composite 平台） -->
+        <div
+          v-if="supportsGroupOpenAIFast(editForm.platform)"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+          data-testid="edit-openai-fast"
+        >
+          <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            {{ t("admin.groups.openaiFast.title") }}
+          </h4>
+          <div class="flex items-center justify-between">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.force") }}
+            </label>
+            <button
+              type="button"
+              :aria-pressed="editForm.force_openai_fast"
+              @click="editForm.force_openai_fast = !editForm.force_openai_fast"
+              class="relative inline-flex h-6 w-12 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
+              :class="editForm.force_openai_fast ? 'group-switch-active' : 'bg-gray-300 dark:bg-dark-600'"
+            >
+              <span
+                class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                :class="editForm.force_openai_fast ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+        </div>
+
         <!-- OpenAI Live 开关（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -4243,6 +4305,10 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
+  normalizeGroupOpenAIFast,
+  supportsGroupOpenAIFast,
+} from "./groupsOpenAIFast";
+import {
   GROUP_PLATFORM_OPTIONS,
 } from "@/constants/platforms";
 import {
@@ -4884,6 +4950,8 @@ const createForm = reactive({
   unavailable_fallback_group_id: null as number | null,
   // OpenAI Messages 模型映射（仅 openai 平台使用）
   allow_live: false,
+  // OpenAI/Composite 分组级 Fast 强制策略
+  force_openai_fast: false,
   opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
   haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
@@ -5319,6 +5387,8 @@ const editForm = reactive({
   unavailable_fallback_group_id: null as number | null,
   // OpenAI Messages 模型映射（仅 openai 平台使用）
   allow_live: false,
+  // OpenAI/Composite 分组级 Fast 强制策略
+  force_openai_fast: false,
   default_mapped_model: '',
   opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
   sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
@@ -5784,6 +5854,7 @@ const closeCreateModal = () => {
   createForm.unavailable_fallback_group_id = null;
   resetMessagesDispatchFormState(createForm);
   createForm.allow_live = false;
+  createForm.force_openai_fast = false;
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
@@ -5844,6 +5915,10 @@ const handleCreateGroup = async () => {
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         createForm.platform,
         createForm.supported_model_scopes,
+      ),
+      force_openai_fast: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.force_openai_fast,
       ),
       messages_dispatch_model_config:
         createForm.platform === "openai"
@@ -5994,6 +6069,10 @@ const handleEdit = async (group: AdminGroup) => {
     group.allowed_client_protocols,
   );
   editForm.allow_live = group.allow_live ?? false;
+  editForm.force_openai_fast = normalizeGroupOpenAIFast(
+    group.platform,
+    group.force_openai_fast ?? false,
+  );
   editForm.opus_mapped_model = messagesDispatchFormState.opus_mapped_model;
   editForm.sonnet_mapped_model = messagesDispatchFormState.sonnet_mapped_model;
   editForm.haiku_mapped_model = messagesDispatchFormState.haiku_mapped_model;
@@ -6066,6 +6145,7 @@ const closeEditModal = () => {
   editForm.audio_stt_price_per_hour = null;
   resetMessagesDispatchFormState(editForm);
   editForm.allow_live = false;
+  editForm.force_openai_fast = false;
   resetModelsListState(editModelsListState);
 };
 
@@ -6113,6 +6193,10 @@ const handleUpdateGroup = async () => {
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
         editForm.platform,
         editForm.supported_model_scopes,
+      ),
+      force_openai_fast: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.force_openai_fast,
       ),
       messages_dispatch_model_config:
         editForm.platform === "openai"
@@ -6293,6 +6377,10 @@ watch(
       resetMessagesDispatchFormState(createForm);
       createForm.allow_live = false;
     }
+    createForm.force_openai_fast = normalizeGroupOpenAIFast(
+      newVal,
+      createForm.force_openai_fast,
+    );
     createForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
       newVal,
       createForm.max_reasoning_effort,
@@ -6384,6 +6472,10 @@ watch(
       resetMessagesDispatchFormState(editForm);
       editForm.allow_live = false;
     }
+    editForm.force_openai_fast = normalizeGroupOpenAIFast(
+      newVal,
+      editForm.force_openai_fast,
+    );
     editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
       newVal,
       editForm.max_reasoning_effort,
@@ -6429,6 +6521,10 @@ watch(
       editForm.allow_live = false
       editForm.default_mapped_model = ''
     }
+    editForm.force_openai_fast = normalizeGroupOpenAIFast(
+      newVal,
+      editForm.force_openai_fast,
+    )
   }
 )
 

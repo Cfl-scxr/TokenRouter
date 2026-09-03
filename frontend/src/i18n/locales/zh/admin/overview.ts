@@ -1223,6 +1223,11 @@ affiliates: {
         unsupportedMessage: '当前 TokenRouter 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
         enableAnyway: '仍然开启'
       },
+      openaiFast: {
+        title: 'OpenAI Fast',
+        force: '强制使用 Fast 优先级',
+        hint: '启用后，此 OpenAI 或 Composite 分组的请求会使用 service_tier=priority；全局 Fast/Flex 策略和 API Key 覆盖仍然有效。'
+      },
       invalidRequestFallback: {
         title: '无效请求兜底分组',
         hint: '仅当上游明确返回 prompt too long 时才会触发，留空表示不兜底',

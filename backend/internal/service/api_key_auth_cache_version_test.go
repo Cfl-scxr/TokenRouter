@@ -114,3 +114,18 @@ func TestAPIKeyServiceRejectsV32AuthSnapshotWithoutGroupModelPricing(t *testing.
 		t.Fatal("expected v32 auth snapshot to be rejected after group model pricing was added")
 	}
 }
+
+// TestAPIKeyServiceRejectsV33AuthSnapshotWithoutGroupOpenAIFast ensures old
+// snapshots cannot silently omit the group-level Fast policy.
+func TestAPIKeyServiceRejectsV33AuthSnapshotWithoutGroupOpenAIFast(t *testing.T) {
+	svc := &APIKeyService{}
+	apiKey, ok, err := svc.applyAuthCacheEntry("k-legacy-group-openai-fast", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 33},
+	})
+	if err != nil {
+		t.Fatalf("expected stale snapshot to be ignored without error, got %v", err)
+	}
+	if ok || apiKey != nil {
+		t.Fatal("expected v33 auth snapshot to be rejected after group OpenAI Fast was added")
+	}
+}

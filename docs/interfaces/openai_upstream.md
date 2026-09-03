@@ -44,6 +44,8 @@ OpenAI 平台拥有以下正式协议族：
 
 OpenAI 分组支持 Messages、Responses 和 Chat，新建时默认启用 Responses 与 Chat；三项都可关闭。已有分组迁移时仅在旧 `allow_messages_dispatch` 开启时加入 Messages。该旧字段只作为 Messages 的弃用兼容镜像，专用 `messages_dispatch_model_config` 仍只负责 Claude 到 GPT 模型映射；系列和精确映射都只在目标值非空时生效，全部留空时不执行分组层模型映射。Responses WebSocket 是 OpenAI/Grok 的原生传输能力，不因其它平台启用兼容 Responses 而开放。
 
+管理员可在 OpenAI/Composite 分组上设置 `force_openai_fast`。网关在 HTTP Responses、Chat/Messages 转换、passthrough 和 Responses WebSocket 的 `response.create` 中统一把组级强制意图规范化为 `service_tier=priority`，再执行全局 Fast/Flex 策略；全局 `filter`/`block` 以及 API Key `force_off` 不会被绕过。该字段随 API Key 认证快照传递，快照版本变更后旧缓存必须重建；其它平台的值由管理服务清零。
+
 ### API Key 文本配置
 
 OpenAI API Key 的普通文本配置把四个概念分开持久化：

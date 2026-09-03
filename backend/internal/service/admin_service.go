@@ -274,8 +274,10 @@ type CreateGroupInput struct {
 	// AllowedClientProtocols 为 nil 时使用平台默认值；显式空数组对所有平台都合法。
 	AllowedClientProtocols []GroupClientProtocol
 	// AllowMessagesDispatch 仅在 OpenAI 分组且新字段缺省时作为兼容输入。
-	AllowMessagesDispatch       bool
-	AllowLive                   bool
+	AllowMessagesDispatch bool
+	AllowLive             bool
+	// ForceOpenAIFast 仅对 OpenAI/Composite 分组启用组级 Fast 强制策略。
+	ForceOpenAIFast             bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
@@ -358,8 +360,10 @@ type UpdateGroupInput struct {
 	// AllowedClientProtocols 为 nil 时保留原值；非 nil 表示显式替换完整集合。
 	AllowedClientProtocols *[]GroupClientProtocol
 	// AllowMessagesDispatch 仅在 OpenAI 分组且新字段缺省时作为兼容输入。
-	AllowMessagesDispatch       *bool
-	AllowLive                   *bool
+	AllowMessagesDispatch *bool
+	AllowLive             *bool
+	// ForceOpenAIFast 为 nil 时保留原值；仅对 OpenAI/Composite 分组生效。
+	ForceOpenAIFast             *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool

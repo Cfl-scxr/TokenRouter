@@ -132,6 +132,8 @@ type Group struct {
 	// AllowMessagesDispatch 是从协议集合派生并持久化的弃用兼容镜像。
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
+	// ForceOpenAIFast 强制 OpenAI/Composite 分组请求使用 service_tier=priority。
+	ForceOpenAIFast             bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
 	RequirePrivacySet           bool // 调度时仅允许 privacy 已成功设置的账号（OpenAI/Antigravity/Anthropic/Gemini）
 	DefaultMappedModel          string

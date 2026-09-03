@@ -1638,6 +1638,16 @@ type openAIFastModeDecision struct {
 	Blocked     *OpenAIFastBlockedError
 }
 
+// openAIGroupForcesFast 仅信任认证链路注入的、已完整加载的分组上下文。
+// 复合分组在请求期会投影到 OpenAI 账号，因此也允许复合分组启用该策略。
+func openAIGroupForcesFast(ctx context.Context, account *Account) bool {
+	if ctx == nil || account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	group, _ := ctx.Value(ctxkey.Group).(*Group)
+	return IsGroupContextValid(group) && groupSupportsOpenAIFast(group.Platform) && group.ForceOpenAIFast
+}
+
 // resolveOpenAIFastModeDecision 统一解析系统策略与单 Key 策略。
 // 系统先裁决原始 tier；Key 改写后再裁决一次，避免 force_on 绕过系统 filter/block。
 func (s *OpenAIGatewayService) resolveOpenAIFastModeDecision(
@@ -1648,6 +1658,12 @@ func (s *OpenAIGatewayService) resolveOpenAIFastModeDecision(
 	hasField bool,
 ) openAIFastModeDecision {
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
+	if openAIGroupForcesFast(ctx, account) {
+		// 组级强制先形成 priority，再交给全局策略裁决；这样没有显式
+		// service_tier 的请求也能覆盖，同时 ForceOff 仍可删除该字段。
+		normTier = OpenAIFastTierPriority
+		hasField = true
+	}
 	applySystemAction := func(tier string) (openAIFastModeDecision, bool) {
 		action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, model, tier)
 		switch action {
