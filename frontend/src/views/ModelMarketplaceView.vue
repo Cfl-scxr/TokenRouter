@@ -374,6 +374,8 @@ const selectedPricingMode = ref<PricingFilter>('all')
 const selectedGroupId = ref<number | 'all'>('all')
 const showFilterDropdown = ref(false)
 const filterPanelRef = ref<HTMLElement | null>(null)
+let marketplaceRequestInFlight = false
+let marketplaceRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 
@@ -815,19 +817,45 @@ function imagePricingRows(pricing: MarketplaceModelPricing): PricingRow[] {
 }
 
 async function fetchMarketplace() {
-  loading.value = true
-  errorMessage.value = ''
+  return loadMarketplace(false)
+}
+
+async function loadMarketplace(silent: boolean) {
+  if (marketplaceRequestInFlight) {
+    return
+  }
+  marketplaceRequestInFlight = true
+  if (!silent) {
+    loading.value = true
+    errorMessage.value = ''
+  }
 
   try {
     groups.value = await getMarketplaceModels()
+    errorMessage.value = ''
   } catch (error) {
     console.error('Failed to load marketplace models:', error)
-    errorMessage.value =
-      typeof error === 'object' && error !== null && 'message' in error
-        ? String(error.message)
-        : t('common.unknownError')
+    if (!silent) {
+      errorMessage.value =
+        typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : t('common.unknownError')
+    }
   } finally {
-    loading.value = false
+    marketplaceRequestInFlight = false
+    if (!silent) {
+      loading.value = false
+    }
+  }
+}
+
+function refreshMarketplaceSilently() {
+  void loadMarketplace(true)
+}
+
+function handleMarketplaceVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    refreshMarketplaceSilently()
   }
 }
 
@@ -839,7 +867,18 @@ onMounted(async () => {
     await appStore.fetchPublicSettings()
   }
   await fetchMarketplace()
+  marketplaceRefreshTimer = setInterval(refreshMarketplaceSilently, 30_000)
+  document.addEventListener('visibilitychange', handleMarketplaceVisibilityChange)
+  window.addEventListener('focus', refreshMarketplaceSilently)
 })
 
-onUnmounted(() => document.removeEventListener('click', handleFilterClickOutside))
+onUnmounted(() => {
+  document.removeEventListener('click', handleFilterClickOutside)
+  document.removeEventListener('visibilitychange', handleMarketplaceVisibilityChange)
+  window.removeEventListener('focus', refreshMarketplaceSilently)
+  if (marketplaceRefreshTimer !== null) {
+    clearInterval(marketplaceRefreshTimer)
+    marketplaceRefreshTimer = null
+  }
+})
 </script>

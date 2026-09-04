@@ -145,9 +145,11 @@ func (r *groupAvailabilityProbeRepository) SaveResultAndScheduleNext(ctx context
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO group_availability_probe_states (
 			group_id, next_run_at, locked_until, locked_by, last_status,
-			last_success, last_latency_ms, last_error, last_checked_at, created_at, updated_at
+			last_success, last_latency_ms, last_error, last_checked_at,
+			consecutive_failures, created_at, updated_at
 		)
-		VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, $7, NOW(), NOW())
+		VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, $7,
+			CASE WHEN $4 THEN 0 ELSE 1 END, NOW(), NOW())
 		ON CONFLICT (group_id) DO UPDATE SET
 			next_run_at = EXCLUDED.next_run_at,
 			locked_until = NULL,
@@ -157,6 +159,10 @@ func (r *groupAvailabilityProbeRepository) SaveResultAndScheduleNext(ctx context
 			last_latency_ms = EXCLUDED.last_latency_ms,
 			last_error = EXCLUDED.last_error,
 			last_checked_at = EXCLUDED.last_checked_at,
+			consecutive_failures = CASE
+				WHEN EXCLUDED.last_success THEN 0
+				ELSE group_availability_probe_states.consecutive_failures + 1
+			END,
 			updated_at = NOW()
 	`, result.GroupID, nextRunAt, result.Status, result.Success, result.LatencyMs, nullableProbeString(result.ErrorMessage), result.FinishedAt); err != nil {
 		return err
@@ -253,11 +259,10 @@ func (r *groupAvailabilityProbeRepository) GetSummaryByGroupIDs(ctx context.Cont
 	}
 
 	lastRows, err := r.db.QueryContext(ctx, `
-		SELECT DISTINCT ON (group_id)
-			group_id, status, finished_at
-		FROM group_availability_probe_results
+		SELECT
+			group_id, last_status, last_checked_at, last_latency_ms, consecutive_failures
+		FROM group_availability_probe_states
 		WHERE group_id = ANY($1)
-		ORDER BY group_id, started_at DESC, id DESC
 	`, pq.Array(groupIDs))
 	if err != nil {
 		return nil, err
@@ -266,15 +271,26 @@ func (r *groupAvailabilityProbeRepository) GetSummaryByGroupIDs(ctx context.Cont
 
 	for lastRows.Next() {
 		var groupID int64
-		var status string
-		var checkedAt time.Time
-		if err := lastRows.Scan(&groupID, &status, &checkedAt); err != nil {
+		var status sql.NullString
+		var checkedAt sql.NullTime
+		var latencyMs sql.NullInt64
+		var consecutiveFailures int64
+		if err := lastRows.Scan(&groupID, &status, &checkedAt, &latencyMs, &consecutiveFailures); err != nil {
 			return nil, err
 		}
 		if summary, ok := out[groupID]; ok {
-			summary.LastStatus = status
-			t := checkedAt
-			summary.LastCheckedAt = &t
+			if status.Valid {
+				summary.LastStatus = status.String
+			}
+			if checkedAt.Valid {
+				t := checkedAt.Time
+				summary.LastCheckedAt = &t
+			}
+			if latencyMs.Valid {
+				latency := latencyMs.Int64
+				summary.LastLatencyMs = &latency
+			}
+			summary.ConsecutiveFailures = consecutiveFailures
 		}
 	}
 	if err := lastRows.Err(); err != nil {

@@ -42,14 +42,16 @@ type GroupAvailabilityBucket struct {
 
 // GroupAvailabilitySummary 是分组主动可用性摘要。
 type GroupAvailabilitySummary struct {
-	WindowDays       int
-	BucketMinutes    int
-	SuccessCount     int64
-	TotalCount       int64
-	AvailabilityRate *float64
-	LastStatus       string
-	LastCheckedAt    *time.Time
-	Days             []GroupAvailabilityBucket
+	WindowDays          int
+	BucketMinutes       int
+	SuccessCount        int64
+	TotalCount          int64
+	AvailabilityRate    *float64
+	LastStatus          string
+	LastCheckedAt       *time.Time
+	LastLatencyMs       *int64
+	ConsecutiveFailures int64
+	Days                []GroupAvailabilityBucket
 }
 
 // GroupAvailabilityProbeRepository 定义分组主动可用性探测的数据访问接口。

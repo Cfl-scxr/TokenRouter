@@ -1,8 +1,10 @@
 import { defineComponent, nextTick } from 'vue'
-import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelMarketplaceView from '../ModelMarketplaceView.vue'
 import type { MarketplaceGroup, MarketplaceModelPricing } from '@/types'
+
+enableAutoUnmount(afterEach)
 
 const getMarketplaceModels = vi.hoisted(() => vi.fn())
 const checkAuth = vi.hoisted(() => vi.fn())
@@ -49,6 +51,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
+      locale: { value: 'zh-CN' },
       t: (key: string, params?: Record<string, string>) => {
         if (key === 'marketplace.rateMultiplierValue') {
           return `marketplace.rateMultiplierValue ${params?.multiplier || ''}`
@@ -214,10 +217,15 @@ function visibleTooltips() {
 describe('ModelMarketplaceView', () => {
   beforeEach(() => {
     localStorage.clear()
+    getMarketplaceModels.mockReset()
     getMarketplaceModels.mockResolvedValue(marketplaceFixture())
     checkAuth.mockClear()
     fetchPublicSettings.mockClear()
     copyToClipboard.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('默认按分组-模型展示', async () => {
@@ -232,11 +240,15 @@ describe('ModelMarketplaceView', () => {
     fixture[0] = {
       ...fixture[0],
       availability: {
-        window_days: 7,
-        bucket_minutes: 1440,
-        success_count: 6,
-        total_count: 7,
-        availability_rate: 6 / 7,
+        window_days: 1,
+        bucket_minutes: 15,
+        success_count: 90,
+        total_count: 96,
+        availability_rate: 90 / 96,
+        last_status: 'failed',
+        last_checked_at: '2026-09-04T09:05:00Z',
+        last_latency_ms: 4321,
+        consecutive_failures: 3,
         days: [],
       },
     }
@@ -246,6 +258,28 @@ describe('ModelMarketplaceView', () => {
 
     expect(wrapper.findAll('[data-testid="group-capacity"]')).toHaveLength(0)
     expect(wrapper.get('[data-testid="marketplace-group-availability"]').classes()).toContain('xl:w-[560px]')
+    expect(wrapper.get('[data-testid="probe-current-status"]').text()).toContain('marketplace.probeStatusUnavailable')
+    expect(wrapper.get('[data-testid="probe-current-latency"]').text()).toBe('4.32 s')
+    expect(wrapper.get('[data-testid="probe-consecutive-failures"]').text()).toBe('3')
+    expect(wrapper.get('[data-testid="probe-history-bar"]').findAll('span')).toHaveLength(96)
+  })
+
+  it('每 30 秒静默刷新，并在窗口重新聚焦时立即刷新', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountMarketplace()
+    expect(getMarketplaceModels).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flushPromises()
+    expect(getMarketplaceModels).toHaveBeenCalledTimes(2)
+
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(getMarketplaceModels).toHaveBeenCalledTimes(3)
+
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getMarketplaceModels).toHaveBeenCalledTimes(3)
   })
 
   it('分组头部用最高优惠标签替换模型数标签，无有效折扣的分组不渲染', async () => {

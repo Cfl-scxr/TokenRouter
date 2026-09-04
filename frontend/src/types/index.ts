@@ -677,6 +677,8 @@ export interface MarketplaceGroupAvailability {
   availability_rate?: number | null
   last_status?: string
   last_checked_at?: string | null
+  last_latency_ms?: number | null
+  consecutive_failures: number
   days: MarketplaceGroupAvailabilityDay[]
 }
 

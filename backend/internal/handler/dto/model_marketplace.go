@@ -80,14 +80,16 @@ type ModelMarketplaceAvailabilityDay struct {
 }
 
 type ModelMarketplaceAvailability struct {
-	WindowDays       int                               `json:"window_days"`
-	BucketMinutes    int                               `json:"bucket_minutes"`
-	SuccessCount     int64                             `json:"success_count"`
-	TotalCount       int64                             `json:"total_count"`
-	AvailabilityRate *float64                          `json:"availability_rate,omitempty"`
-	LastStatus       string                            `json:"last_status,omitempty"`
-	LastCheckedAt    *time.Time                        `json:"last_checked_at,omitempty"`
-	Days             []ModelMarketplaceAvailabilityDay `json:"days"`
+	WindowDays          int                               `json:"window_days"`
+	BucketMinutes       int                               `json:"bucket_minutes"`
+	SuccessCount        int64                             `json:"success_count"`
+	TotalCount          int64                             `json:"total_count"`
+	AvailabilityRate    *float64                          `json:"availability_rate,omitempty"`
+	LastStatus          string                            `json:"last_status,omitempty"`
+	LastCheckedAt       *time.Time                        `json:"last_checked_at,omitempty"`
+	LastLatencyMs       *int64                            `json:"last_latency_ms,omitempty"`
+	ConsecutiveFailures int64                             `json:"consecutive_failures"`
+	Days                []ModelMarketplaceAvailabilityDay `json:"days"`
 }
 
 type ModelMarketplaceGroup struct {
@@ -161,14 +163,16 @@ func modelMarketplaceAvailabilityFromService(availability *service.GroupAvailabi
 		})
 	}
 	return &ModelMarketplaceAvailability{
-		WindowDays:       availability.WindowDays,
-		BucketMinutes:    availability.BucketMinutes,
-		SuccessCount:     availability.SuccessCount,
-		TotalCount:       availability.TotalCount,
-		AvailabilityRate: availability.AvailabilityRate,
-		LastStatus:       availability.LastStatus,
-		LastCheckedAt:    availability.LastCheckedAt,
-		Days:             days,
+		WindowDays:          availability.WindowDays,
+		BucketMinutes:       availability.BucketMinutes,
+		SuccessCount:        availability.SuccessCount,
+		TotalCount:          availability.TotalCount,
+		AvailabilityRate:    availability.AvailabilityRate,
+		LastStatus:          availability.LastStatus,
+		LastCheckedAt:       availability.LastCheckedAt,
+		LastLatencyMs:       availability.LastLatencyMs,
+		ConsecutiveFailures: availability.ConsecutiveFailures,
+		Days:                days,
 	}
 }
 

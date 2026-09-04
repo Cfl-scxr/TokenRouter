@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	DefaultMarketplaceAvailabilityWindowDays    = 7
-	DefaultMarketplaceAvailabilityBucketMinutes = 120
+	DefaultMarketplaceAvailabilityWindowDays    = 1
+	DefaultMarketplaceAvailabilityBucketMinutes = 15
 	minMarketplaceAvailabilityWindowDays        = 1
 	maxMarketplaceAvailabilityWindowDays        = 90
 	minMarketplaceAvailabilityBucketMinutes     = 5

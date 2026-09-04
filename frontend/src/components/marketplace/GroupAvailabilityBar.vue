@@ -1,24 +1,70 @@
 <template>
-  <div class="flex w-full min-w-0 items-center gap-2" :title="tooltip">
-    <div
-      class="grid h-8 min-w-0 flex-1 items-center overflow-hidden"
-      :style="barGridStyle"
-      role="img"
-      :aria-label="ariaLabel"
-    >
-      <span
-        v-for="(bucket, index) in normalizedBuckets"
-        :key="`${bucket.date || 'empty'}-${index}`"
-        :class="[
-          'h-6 max-w-full justify-self-center rounded-[2px]',
-          bucketClass(bucket.availability_rate, bucket.total_count),
-        ]"
-        :style="{ width: bucketWidth }"
-      />
+  <div class="w-full min-w-0 space-y-2" :title="tooltip">
+    <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+        <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
+          {{ t('marketplace.probeCurrentStatus') }}
+        </div>
+        <div
+          class="mt-0.5 flex items-center gap-1.5 text-xs font-semibold"
+          :class="statusTextClass"
+          data-testid="probe-current-status"
+        >
+          <span class="h-1.5 w-1.5 rounded-full" :class="statusDotClass" />
+          {{ statusLabel }}
+        </div>
+      </div>
+      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+        <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
+          {{ t('marketplace.probeLastCheckedAt') }}
+        </div>
+        <div class="mt-0.5 truncate text-xs font-semibold text-gray-800 dark:text-dark-100" data-testid="probe-last-checked-at">
+          {{ lastCheckedLabel }}
+        </div>
+      </div>
+      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+        <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
+          {{ t('marketplace.probeCurrentLatency') }}
+        </div>
+        <div class="mt-0.5 text-xs font-semibold text-gray-800 dark:text-dark-100" data-testid="probe-current-latency">
+          {{ latencyLabel }}
+        </div>
+      </div>
+      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+        <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
+          {{ t('marketplace.probeConsecutiveFailures') }}
+        </div>
+        <div class="mt-0.5 text-xs font-semibold text-gray-800 dark:text-dark-100" data-testid="probe-consecutive-failures">
+          {{ consecutiveFailuresLabel }}
+        </div>
+      </div>
     </div>
-    <div class="w-[96px] shrink-0 text-left">
-      <div class="text-base font-semibold leading-5 text-gray-900 dark:text-white">
-        {{ rateLabel }}
+
+    <div class="flex min-w-0 items-center gap-2">
+      <div
+        class="grid h-7 min-w-0 flex-1 items-center overflow-hidden"
+        :style="barGridStyle"
+        role="img"
+        :aria-label="ariaLabel"
+        data-testid="probe-history-bar"
+      >
+        <span
+          v-for="(bucket, index) in normalizedBuckets"
+          :key="`${bucket.date || 'empty'}-${index}`"
+          :class="[
+            'h-5 max-w-full justify-self-center rounded-[2px]',
+            bucketClass(bucket.availability_rate, bucket.total_count),
+          ]"
+          :style="{ width: bucketWidth }"
+        />
+      </div>
+      <div class="w-[96px] shrink-0 text-left">
+        <div class="text-sm font-semibold leading-5 text-gray-900 dark:text-white">
+          {{ rateLabel }}
+        </div>
+        <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
+          {{ t('marketplace.availabilityWindowHours', { hours: windowHours }) }}
+        </div>
       </div>
     </div>
   </div>
@@ -33,10 +79,11 @@ const props = defineProps<{
   availability?: MarketplaceGroupAvailability | null
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
-const windowDays = computed(() => Math.max(props.availability?.window_days ?? 7, 1))
-const bucketMinutes = computed(() => Math.max(props.availability?.bucket_minutes ?? 24 * 60, 1))
+const windowDays = computed(() => Math.max(props.availability?.window_days ?? 1, 1))
+const windowHours = computed(() => windowDays.value * 24)
+const bucketMinutes = computed(() => Math.max(props.availability?.bucket_minutes ?? 15, 1))
 const targetBucketCount = computed(() =>
   Math.max(Math.ceil((windowDays.value * 24 * 60) / bucketMinutes.value), 1),
 )
@@ -90,15 +137,74 @@ const rateLabel = computed(() => {
   return `${(rate * 100).toFixed(2)}%`
 })
 
+const normalizedStatus = computed(() => props.availability?.last_status?.trim().toLowerCase() ?? '')
+const statusLabel = computed(() => {
+  if (normalizedStatus.value === 'success') {
+    return t('marketplace.probeStatusAvailable')
+  }
+  if (normalizedStatus.value === 'failed') {
+    return t('marketplace.probeStatusUnavailable')
+  }
+  return t('marketplace.probeStatusUnknown')
+})
+const statusTextClass = computed(() => {
+  if (normalizedStatus.value === 'success') {
+    return 'text-emerald-700 dark:text-emerald-300'
+  }
+  if (normalizedStatus.value === 'failed') {
+    return 'text-rose-700 dark:text-rose-300'
+  }
+  return 'text-gray-600 dark:text-dark-300'
+})
+const statusDotClass = computed(() => {
+  if (normalizedStatus.value === 'success') {
+    return 'bg-emerald-500'
+  }
+  if (normalizedStatus.value === 'failed') {
+    return 'bg-rose-500'
+  }
+  return 'bg-gray-400 dark:bg-dark-500'
+})
+const lastCheckedLabel = computed(() => {
+  const raw = props.availability?.last_checked_at
+  if (!raw) {
+    return t('marketplace.probeNoData')
+  }
+  const value = new Date(raw)
+  if (Number.isNaN(value.getTime())) {
+    return t('marketplace.probeNoData')
+  }
+  return value.toLocaleString(locale.value, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+})
+const latencyLabel = computed(() => {
+  const latency = props.availability?.last_latency_ms
+  if (typeof latency !== 'number' || latency < 0) {
+    return t('marketplace.probeNoData')
+  }
+  if (latency >= 1000) {
+    return `${(latency / 1000).toFixed(2)} s`
+  }
+  return `${latency} ms`
+})
+const consecutiveFailuresLabel = computed(() =>
+  String(Math.max(props.availability?.consecutive_failures ?? 0, 0)),
+)
+
 const tooltip = computed(() => {
   const availability = props.availability
   if (!availability || typeof availability.availability_rate !== 'number') {
     return t('marketplace.availabilityHintNoData', {
-      days: windowDays.value,
+      hours: windowHours.value,
     })
   }
   return t('marketplace.availabilityHint', {
-    days: windowDays.value,
+    hours: windowHours.value,
     rate: rateLabel.value,
     success: availability.success_count,
     total: availability.total_count,
@@ -106,7 +212,7 @@ const tooltip = computed(() => {
 })
 
 const ariaLabel = computed(
-  () => `${t('marketplace.availabilityWindow', { days: windowDays.value })}: ${rateLabel.value}`,
+  () => `${t('marketplace.availabilityWindowHours', { hours: windowHours.value })}: ${rateLabel.value}`,
 )
 
 function bucketClass(rate?: number | null, totalCount?: number): string {
