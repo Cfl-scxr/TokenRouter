@@ -43,3 +43,16 @@ func (h *ModelMarketplaceHandler) StatsPublic(c *gin.Context) {
 
 	response.Success(c, dto.ModelMarketplaceStatsFromService(stats))
 }
+
+// RoutingHealthAdmin 返回 Sidecar 提供的脱敏全渠道路由健康快照。
+// GET /api/v1/admin/marketplace/routing-health
+func (h *ModelMarketplaceHandler) RoutingHealthAdmin(c *gin.Context) {
+	snapshot, err := h.modelMarketplaceService.GetRoutingHealthSnapshot()
+	if err != nil {
+		// 健康观察面故障不能影响模型广场主体，使用明确的 unavailable 响应降级。
+		response.Success(c, service.UnavailableMarketplaceRoutingHealthSnapshot())
+		return
+	}
+
+	response.Success(c, snapshot)
+}

@@ -29,6 +29,9 @@ func RegisterAdminRoutes(
 	// 审计中间件挂在认证之后：所有管理面变更类操作 + 敏感读取入审计日志
 	admin.Use(gin.HandlerFunc(auditLog))
 	{
+		// 综合健康快照包含人工停用渠道，仅向管理员观察面开放。
+		admin.GET("/marketplace/routing-health", h.ModelMarketplace.RoutingHealthAdmin)
+
 		// 仪表盘
 		registerDashboardRoutes(admin, h)
 

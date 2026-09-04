@@ -708,6 +708,73 @@ export interface MarketplaceStats {
   total_users: number
 }
 
+export type MarketplaceRoutingHealthLevel = 'healthy' | 'degraded' | 'unavailable' | 'manual_disabled' | 'unknown'
+
+export interface MarketplaceRoutingHealthSnapshot {
+  available: boolean
+  schemaVersion: number
+  state: string
+  observedAt?: string | null
+  routingChainId?: string
+  currentHit?: {
+    supplierName: string
+    model: string
+    observedAt?: string | null
+  } | null
+  providers: MarketplaceRoutingHealthProvider[]
+}
+
+export interface MarketplaceRoutingHealthProvider {
+  supplierName: string
+  names: {
+    group: string
+    account: string
+    key: string
+  }
+  manual: {
+    enabled: boolean
+    groupEnabled: boolean
+    accountEnabled: boolean
+    accountSchedulable: boolean
+    keyEnabled: boolean
+  }
+  schedulable: boolean
+  routeState: string
+  healthLevel: MarketplaceRoutingHealthLevel | string
+  healthScore?: number | null
+  business: {
+    total: number
+    success: number
+    successRate?: number | null
+    lastObservedAt?: string | null
+  }
+  health: {
+    lastSuccessAt?: string | null
+    lastFailureAt?: string | null
+    lastLatencyMs?: number | null
+    consecutiveFailures: number
+    classification?: string | null
+    cooling: boolean
+    cooldownUntil?: string | null
+    warming: boolean
+    warmupUntil?: string | null
+    businessSuccessEwma?: number | null
+  }
+  scheduledTest?: {
+    kind: string
+    result: string
+    observedAt?: string | null
+    latencyMs?: number | null
+  } | null
+  availabilityProbe?: {
+    kind: string
+    result: string
+    observedAt?: string | null
+    consecutiveSuccesses: number
+    nextProbeAt?: string | null
+  } | null
+}
+
 export interface OpenAIMessagesDispatchModelConfig {
   opus_mapped_model?: string
   sonnet_mapped_model?: string

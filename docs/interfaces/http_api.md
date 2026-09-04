@@ -52,6 +52,8 @@ RequestLogger
 | `/backend-api/codex/*` | TokenRouter API Key | Codex Responses、Realtime 与 sideband 兼容入口 |
 | `/api/v1/pages/*` 等 page routes | 按页面类型为用户或管理员 JWT | 服务端生成/读取的 pricing、账单或管理页面数据 |
 
+`GET /api/v1/admin/marketplace/routing-health` 是管理员模型广场的综合路由健康观察接口。它只读取 Sidecar 脱敏文件并返回结构化白名单字段，不触发供应商请求；文件缺失或非法时仍返回成功 envelope，但 `data.available=false` 且 `providers=[]`，避免观察面故障影响模型目录主体。
+
 <a id="subscription_self_revoke_api"></a>
 用户订阅页面提供一个受额度条件约束的自助撤销接口：
 

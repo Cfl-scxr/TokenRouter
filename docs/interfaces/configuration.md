@@ -55,6 +55,8 @@
 
 环境变量优先于 YAML，因此排查“文件修改不生效”时先检查容器环境。不得在日志、错误或管理响应中输出数据库密码、JWT/TOTP secret、OAuth secret、对象存储 secret 或账号凭据。
 
+`ROUTING_PUBLIC_HEALTH_FILE` 是管理员模型广场综合健康观察面的可选进程变量，默认 `/run/wukong-model-routing/public-health.json`。它必须指向 Sidecar 原子生成的脱敏 JSON 快照，并通过容器只读目录挂载提供；修改路径或挂载后需要重建应用容器。文件不可读、超过 1 MiB、schema 不受支持或必要标识缺失时，健康接口降级为 `available=false`，不会影响普通模型列表和网关流量。
+
 ## 首次初始化
 
 setup 使用 `DATA_DIR > 可写 /app/data > 当前目录` 选择 `config.yaml` 和 `.installed` 的位置。正常情况下，配置文件或安装锁任一存在就不会重新开放初始化；`SKIP_SETUP` 是部署者的显式旁路。修改这套判断必须保持“删除一个文件不能远程强制重装”的防重置边界。

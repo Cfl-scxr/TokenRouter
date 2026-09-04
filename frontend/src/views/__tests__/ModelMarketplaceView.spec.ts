@@ -7,12 +7,14 @@ import type { MarketplaceGroup, MarketplaceModelPricing } from '@/types'
 enableAutoUnmount(afterEach)
 
 const getMarketplaceModels = vi.hoisted(() => vi.fn())
+const getMarketplaceRoutingHealth = vi.hoisted(() => vi.fn())
 const checkAuth = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
 const copyToClipboard = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/marketplace', () => ({
   getMarketplaceModels,
+  getMarketplaceRoutingHealth,
 }))
 
 vi.mock('@/composables/useClipboard', () => ({
@@ -219,6 +221,7 @@ describe('ModelMarketplaceView', () => {
     localStorage.clear()
     getMarketplaceModels.mockReset()
     getMarketplaceModels.mockResolvedValue(marketplaceFixture())
+    getMarketplaceRoutingHealth.mockReset()
     checkAuth.mockClear()
     fetchPublicSettings.mockClear()
     copyToClipboard.mockClear()

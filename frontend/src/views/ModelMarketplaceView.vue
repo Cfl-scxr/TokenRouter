@@ -162,6 +162,11 @@
           </div>
         </div>
 
+        <RoutingHealthOverview
+          v-if="isAdmin && routingHealth"
+          :snapshot="routingHealth"
+        />
+
         <div v-if="loading" class="card px-6 py-14 text-center">
           <LoadingSpinner size="lg" />
           <p class="mt-4 text-sm text-gray-500 dark:text-dark-400">{{ t('common.loading') }}</p>
@@ -341,12 +346,13 @@ import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
 import ModelIdLabel from '@/components/common/ModelIdLabel.vue'
+import RoutingHealthOverview from '@/components/marketplace/RoutingHealthOverview.vue'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { initTheme, useTheme } from '@/composables/useTheme'
-import { getMarketplaceModels } from '@/api/marketplace'
+import { getMarketplaceModels, getMarketplaceRoutingHealth } from '@/api/marketplace'
 import { providerBrandDisplayName, providerBrandFilterKey, resolveProviderBrand, resolveProviderBrandKey } from '@/utils/providerBrand'
 import { sanitizeUrl } from '@/utils/url'
-import type { MarketplaceGroup, MarketplaceModelPricing, MarketplacePricingInterval } from '@/types'
+import type { MarketplaceGroup, MarketplaceModelPricing, MarketplacePricingInterval, MarketplaceRoutingHealthSnapshot } from '@/types'
 import { useAppStore, useAuthStore } from '@/stores'
 
 type VisibleMarketplaceGroup = MarketplaceGroup
@@ -366,6 +372,7 @@ const authStore = useAuthStore()
 const { isDark, toggleTheme } = useTheme()
 
 const groups = ref<MarketplaceGroup[]>([])
+const routingHealth = ref<MarketplaceRoutingHealthSnapshot | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 const search = ref('')
@@ -375,9 +382,11 @@ const selectedGroupId = ref<number | 'all'>('all')
 const showFilterDropdown = ref(false)
 const filterPanelRef = ref<HTMLElement | null>(null)
 let marketplaceRequestInFlight = false
+let routingHealthRequestInFlight = false
 let marketplaceRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
+const isAdmin = computed(() => authStore.isAdmin)
 
 const siteName = computed(() => appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
@@ -849,8 +858,29 @@ async function loadMarketplace(silent: boolean) {
   }
 }
 
+async function loadRoutingHealth() {
+  if (!isAdmin.value || routingHealthRequestInFlight) {
+    return
+  }
+  routingHealthRequestInFlight = true
+  try {
+    routingHealth.value = await getMarketplaceRoutingHealth()
+  } catch {
+    // 综合观察面独立降级，不能阻断模型广场主体，也不重复污染浏览器控制台。
+    routingHealth.value = {
+      available: false,
+      schemaVersion: 1,
+      state: 'unavailable',
+      providers: [],
+    }
+  } finally {
+    routingHealthRequestInFlight = false
+  }
+}
+
 function refreshMarketplaceSilently() {
   void loadMarketplace(true)
+  void loadRoutingHealth()
 }
 
 function handleMarketplaceVisibilityChange() {
@@ -867,6 +897,7 @@ onMounted(async () => {
     await appStore.fetchPublicSettings()
   }
   await fetchMarketplace()
+  await loadRoutingHealth()
   marketplaceRefreshTimer = setInterval(refreshMarketplaceSilently, 30_000)
   document.addEventListener('visibilitychange', handleMarketplaceVisibilityChange)
   window.addEventListener('focus', refreshMarketplaceSilently)

@@ -182,4 +182,6 @@
 
 升级完成后至少检查 `/health`、登录/API Key 鉴权、一个非流和流式网关请求、用量结算、关键后台任务及迁移表。保留旧产物和升级前备份，直到这些检查完成。
 
+模型广场启用综合路由健康总览时，应用容器应把 Sidecar 的快照目录只读挂载到 `/run/wukong-model-routing`，并设置 `ROUTING_PUBLIC_HEALTH_FILE=/run/wukong-model-routing/public-health.json`。必须挂载目录而不是单个文件，因为 Sidecar 通过临时文件重命名原子替换快照；单文件 bind mount 可能继续指向旧 inode。发布后同时验收管理员接口 `available=true`、供应商数量符合路由台账、页面 30 秒刷新，以及匿名请求无法访问该管理员接口。
+
 相关文档：[系统架构](../architecture/system_architecture.md)、[配置边界](../interfaces/configuration.md)、[运维目录](index.md)。
