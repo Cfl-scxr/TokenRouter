@@ -5,7 +5,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
+	"time"
 
 	dbmigrations "github.com/TokenFlux/TokenRouter/migrations"
 	"github.com/stretchr/testify/require"
@@ -106,4 +108,39 @@ INSERT INTO settings (key, value) VALUES ('data_sharing_enabled', 'true');
 	require.Equal(t, "not-json", backupJSON)
 	require.NoError(t, tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key = 'data_sharing_enabled'`).Scan(&removedSettingCount))
 	require.Zero(t, removedSettingCount)
+
+	// 包含 NUL Unicode 转义的 JSON 文本语法有效，但 PostgreSQL JSONB 无法表示它。
+	invalidJSONB := `{"note":"\u0000"}`
+	_, err = tx.ExecContext(ctx, `UPDATE settings SET value = $1 WHERE key = 'backup_content_config'`, invalidJSONB)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `INSERT INTO settings (key, value) VALUES ('data_sharing_enabled', 'true')`)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+	require.NoError(t, err)
+	require.NoError(t, tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'backup_content_config'`).Scan(&backupJSON))
+	require.Equal(t, invalidJSONB, backupJSON)
+	require.NoError(t, tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM settings WHERE key = 'data_sharing_enabled'`).Scan(&removedSettingCount))
+	require.Zero(t, removedSettingCount)
+
+	// 非 JSON 转换错误必须继续阻断迁移，不能被异常处理吞掉。
+	_, err = tx.ExecContext(ctx, `UPDATE settings SET value = '{"include_data_share_sessions":true}' WHERE key = 'backup_content_config'`)
+	require.NoError(t, err)
+	functionName := fmt.Sprintf("fail_data_sharing_backup_update_%d", time.Now().UnixNano())
+	triggerName := fmt.Sprintf("fail_data_sharing_backup_update_trigger_%d", time.Now().UnixNano())
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(`
+CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'forced backup content update failure';
+    RETURN NEW;
+END;
+$$`, functionName))
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(
+		"CREATE TRIGGER %s BEFORE UPDATE ON settings FOR EACH ROW EXECUTE FUNCTION %s()",
+		triggerName,
+		functionName,
+	))
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+	require.ErrorContains(t, err, "forced backup content update failure")
 }

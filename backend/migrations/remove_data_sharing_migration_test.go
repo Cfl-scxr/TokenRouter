@@ -22,11 +22,12 @@ func TestRemoveDataSharingMigrationContract(t *testing.T) {
 		"drop column if exists data_sharing_notice_version",
 		"drop column if exists data_sharing_confirmed_group_id",
 		"drop column if exists data_sharing_confirmed_at",
-		"value::jsonb - 'include_data_share_sessions'",
-		"when invalid_text_representation",
+		"backup_json - 'include_data_share_sessions'",
+		"when data_exception or program_limit_exceeded",
 	} {
 		require.Contains(t, sql, fragment)
 	}
+	require.NotContains(t, sql, "when others")
 
 	for _, key := range []string{
 		"data_sharing_enabled",

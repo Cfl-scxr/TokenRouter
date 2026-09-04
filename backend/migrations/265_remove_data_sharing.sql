@@ -30,18 +30,36 @@ WHERE key IN (
     'data_sharing_capture_runtime'
 );
 
--- 历史非法 JSON 由运维后续处理，不能阻断破坏性迁移。
+-- 历史值可能是无效 JSON，或是 JSONB 无法表示的合法 JSON；这些转换错误不能阻断破坏性迁移。
 DO $$
+DECLARE
+    backup_content TEXT;
+    backup_json JSONB;
 BEGIN
+    SELECT value
+    INTO backup_content
+    FROM settings
+    WHERE key = 'backup_content_config'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
     BEGIN
-        UPDATE settings
-        SET value = (value::jsonb - 'include_data_share_sessions')::text,
-            updated_at = NOW()
-        WHERE key = 'backup_content_config'
-          AND jsonb_typeof(value::jsonb) = 'object';
+        backup_json := backup_content::jsonb;
     EXCEPTION
-        WHEN invalid_text_representation THEN
-            RAISE NOTICE 'skip invalid backup_content_config JSON while removing data sharing';
+        -- JSONB 转换只可能在此块内产生预期的数据异常；更新阶段的错误不在捕获范围内。
+        WHEN data_exception OR program_limit_exceeded THEN
+            RAISE NOTICE 'skip unusable backup_content_config while removing data sharing (SQLSTATE %)', SQLSTATE;
+            RETURN;
     END;
+
+    IF jsonb_typeof(backup_json) = 'object' THEN
+        UPDATE settings
+        SET value = (backup_json - 'include_data_share_sessions')::text,
+            updated_at = NOW()
+        WHERE key = 'backup_content_config';
+    END IF;
 END
 $$;

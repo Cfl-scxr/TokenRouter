@@ -74,7 +74,7 @@
 
 ### 数据共享功能下线
 
-迁移 `265_remove_data_sharing.sql` 是不支持新旧实例混跑的破坏性迁移。它幂等删除 `data_share_export_artifacts`、`data_share_sessions`，删除 Group、API Key 和复合 Key 映射中的数据共享列与索引，并删除九个数据共享运行设置。对于有效的 `backup_content_config` JSON 对象，迁移只移除 `include_data_share_sessions`；历史非法 JSON 会保留并发出数据库 notice，不阻断迁移。历史迁移 141 至 168 及 226 保持不可变，以支持空库按完整序列初始化和旧版本前向升级。
+迁移 `265_remove_data_sharing.sql` 是不支持新旧实例混跑的破坏性迁移。它幂等删除 `data_share_export_artifacts`、`data_share_sessions`，删除 Group、API Key 和复合 Key 映射中的数据共享列与索引，并删除九个数据共享运行设置。对于有效的 `backup_content_config` JSON 对象，迁移只移除 `include_data_share_sessions`；历史上无效的 JSON 或 JSONB 无法表示的值会保留并发出数据库 notice，不阻断迁移。历史迁移 141 至 168 及 226 保持不可变，以支持空库按完整序列初始化和旧版本前向升级。
 
 升级必须按以下顺序执行：
 

@@ -35,7 +35,12 @@ func TestRemovedFeatureRoutesReturnNotFound(t *testing.T) {
 	)
 
 	removedPath := "/api/v1/" + "data" + "-sharing"
-	for _, path := range []string{removedPath, "/api/v1/admin/" + "data" + "-sharing"} {
+	for _, path := range []string{
+		removedPath,
+		removedPath + "/export/download",
+		"/api/v1/admin/" + "data" + "-sharing",
+		"/api/v1/admin/" + "data" + "-sharing/exports/download",
+	} {
 		for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(method, path, nil)
