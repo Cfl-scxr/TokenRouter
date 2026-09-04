@@ -95,7 +95,6 @@
 | `internal/moderation/policy` | 风险处置、错误透传、封禁和本地策略拒绝。 |
 | `internal/operations/observability` | 指标、日志、告警、运行时快照和 Ops 信号。 |
 | `internal/operations/analytics` | Dashboard、用量聚合、趋势和统计查询。 |
-| `internal/operations/data` | 数据共享、会话导出、脱敏和隐私生命周期。 |
 | `internal/operations/maintenance` | 备份、清理、迁移、过期处理和恢复任务。 |
 
 ### HTTP 接口层
@@ -189,7 +188,6 @@ cmd/server         ->  所有具体实现，只负责组装，不写业务规则
 - `billing/usage`、`billing/pricing`、`billing/settlement` 分别负责事实、计算和资金事务。
 - `billing/subscription` 与 `commerce/payment` 分开；订阅是权益状态，支付是外部订单状态。
 - `batchimage` 和 `creative` 都是异步任务，但队列、临时数据和生命周期不同，应分别拥有状态机。
-- `operations/data` 的数据共享生命周期不能混入普通 Ops 查询或网关业务。
 
 ### 存储与接口边界
 
