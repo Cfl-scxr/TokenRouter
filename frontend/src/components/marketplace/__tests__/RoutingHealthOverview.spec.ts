@@ -66,6 +66,7 @@ describe('RoutingHealthOverview', () => {
       currentHit: { supplierName: 'PQ', model: 'gpt-5.6-sol' },
       providers: Array.from({ length: 9 }, (_, index) => provider(index + 1, index === 1 ? 'degraded' : 'healthy')),
     }
+    snapshot.providers[0].health.lastLatencyMs = 12.80328799970448
 
     const wrapper = mount(RoutingHealthOverview, { props: { snapshot } })
 
@@ -73,6 +74,7 @@ describe('RoutingHealthOverview', () => {
     expect(wrapper.text()).toContain('PQ / gpt-5.6-sol')
     expect(wrapper.text()).toContain('66.7% (2/3)')
     expect(wrapper.text()).toContain('2.99 s')
+    expect(wrapper.text()).toContain('13 ms')
     expect(wrapper.text()).toContain('marketplace.routingHealthManualDisabled')
     expect(wrapper.text()).toContain('marketplace.routingHealthNoAutoReturn')
   })

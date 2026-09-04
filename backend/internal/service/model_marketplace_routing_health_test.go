@@ -25,7 +25,7 @@ func TestModelMarketplaceServiceGetRoutingHealthSnapshot(t *testing.T) {
     "healthLevel": "healthy",
     "healthScore": 95,
     "business": {"total": 3, "success": 3, "successRate": 1},
-    "health": {"consecutiveFailures": 0, "cooling": false, "warming": false},
+    "health": {"lastLatencyMs": 12.80328799970448, "consecutiveFailures": 0, "cooling": false, "warming": false},
     "scheduledTest": {"kind": "scheduled_test", "result": "success", "observedAt": "2026-09-04T12:38:03.028Z", "latencyMs": 2988}
   }],
   "futureInternalField": "must-not-leak"
@@ -39,6 +39,7 @@ func TestModelMarketplaceServiceGetRoutingHealthSnapshot(t *testing.T) {
 	require.Equal(t, "tokenrouter-primary", snapshot.RoutingChainID)
 	require.Len(t, snapshot.Providers, 1)
 	require.Equal(t, "fastlyai", snapshot.Providers[0].Names.Group)
+	require.InDelta(t, 12.80328799970448, *snapshot.Providers[0].Health.LastLatencyMs, 0.0000001)
 	require.EqualValues(t, 2988, *snapshot.Providers[0].ScheduledTest.LatencyMs)
 }
 

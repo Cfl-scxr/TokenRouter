@@ -71,7 +71,7 @@ type MarketplaceRoutingHealthBusiness struct {
 type MarketplaceRoutingHealthDetail struct {
 	LastSuccessAt       *time.Time `json:"lastSuccessAt"`
 	LastFailureAt       *time.Time `json:"lastFailureAt"`
-	LastLatencyMs       *int64     `json:"lastLatencyMs"`
+	LastLatencyMs       *float64   `json:"lastLatencyMs"`
 	ConsecutiveFailures int64      `json:"consecutiveFailures"`
 	Classification      *string    `json:"classification"`
 	Cooling             bool       `json:"cooling"`

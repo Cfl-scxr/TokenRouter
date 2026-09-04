@@ -184,7 +184,7 @@ function formatProbeSuccess24h(provider: MarketplaceRoutingHealthProvider): stri
 function formatLatency(provider: MarketplaceRoutingHealthProvider): string {
   const latency = provider.health.lastLatencyMs ?? provider.scheduledTest?.latencyMs
   if (typeof latency !== 'number' || latency < 0) return '-'
-  return latency >= 1000 ? `${(latency / 1000).toFixed(2)} s` : `${latency} ms`
+  return latency >= 1000 ? `${(latency / 1000).toFixed(2)} s` : `${Math.round(latency)} ms`
 }
 
 function lastProbeAt(provider: MarketplaceRoutingHealthProvider): string | null | undefined {
