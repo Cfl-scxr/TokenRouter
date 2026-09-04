@@ -765,6 +765,10 @@ export interface MarketplaceRoutingHealthProvider {
     result: string
     observedAt?: string | null
     latencyMs?: number | null
+    successRate24h?: number | null
+    averageLatencyMs24h?: number | null
+    p95LatencyMs24h?: number | null
+    sampleCount24h?: number
   } | null
   availabilityProbe?: {
     kind: string

@@ -11,6 +11,7 @@ const getMarketplaceRoutingHealth = vi.hoisted(() => vi.fn())
 const checkAuth = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
 const copyToClipboard = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({ isAuthenticated: true, isAdmin: false }))
 
 vi.mock('@/api/marketplace', () => ({
   getMarketplaceModels,
@@ -23,8 +24,12 @@ vi.mock('@/composables/useClipboard', () => ({
 
 vi.mock('@/stores', () => ({
   useAuthStore: () => ({
-    isAuthenticated: true,
-    isAdmin: false,
+    get isAuthenticated() {
+      return authState.isAuthenticated
+    },
+    get isAdmin() {
+      return authState.isAdmin
+    },
     checkAuth,
   }),
   useAppStore: () => ({
@@ -190,6 +195,37 @@ function marketplaceModel(id: string, displayName: string, pricing: MarketplaceM
   }
 }
 
+function routingHealthFixture() {
+  return {
+    available: true,
+    schemaVersion: 1,
+    state: 'healthy',
+    observedAt: '2026-09-05T02:17:38+08:00',
+    currentHit: null,
+    providers: [
+      {
+        supplierName: 'Input Air',
+        names: { group: 'input-air', account: 'input-air', key: 'input-air' },
+        manual: {
+          enabled: true,
+          groupEnabled: true,
+          accountEnabled: true,
+          accountSchedulable: true,
+          keyEnabled: true,
+        },
+        schedulable: true,
+        routeState: 'available',
+        healthLevel: 'healthy',
+        healthScore: 98,
+        business: { total: 10, success: 10, successRate: 1 },
+        health: { consecutiveFailures: 0, cooling: false, warming: false, lastLatencyMs: 1250 },
+        scheduledTest: null,
+        availabilityProbe: null,
+      },
+    ],
+  }
+}
+
 async function mountMarketplace() {
   const wrapper = mount(ModelMarketplaceView, {
     global: {
@@ -219,12 +255,53 @@ function visibleTooltips() {
 describe('ModelMarketplaceView', () => {
   beforeEach(() => {
     localStorage.clear()
+    authState.isAuthenticated = true
+    authState.isAdmin = false
     getMarketplaceModels.mockReset()
     getMarketplaceModels.mockResolvedValue(marketplaceFixture())
     getMarketplaceRoutingHealth.mockReset()
     checkAuth.mockClear()
     fetchPublicSettings.mockClear()
     copyToClipboard.mockClear()
+  })
+
+  it('管理员健康快照可用时展示全渠道表', async () => {
+    authState.isAdmin = true
+    getMarketplaceRoutingHealth.mockResolvedValue(routingHealthFixture())
+
+    const wrapper = await mountMarketplace()
+
+    expect(wrapper.get('[data-testid="routing-health-overview"]')).toBeTruthy()
+    expect(wrapper.findAll('[data-testid="routing-health-provider"]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('input-air')
+  })
+
+  it.each([
+    [401, 'marketplace.routingHealthAuthRequired'],
+    [403, 'marketplace.routingHealthForbidden'],
+    [0, 'marketplace.routingHealthNetworkError'],
+  ])('管理员健康请求状态 %s 显示可判断错误', async (status, translationKey) => {
+    authState.isAdmin = true
+    getMarketplaceRoutingHealth.mockRejectedValue({ status, message: 'redacted' })
+
+    const wrapper = await mountMarketplace()
+
+    expect(wrapper.get('[data-testid="routing-health-load-state"]').text()).toContain(translationKey)
+  })
+
+  it('后端可访问但健康快照源不可用时显示源状态', async () => {
+    authState.isAdmin = true
+    getMarketplaceRoutingHealth.mockResolvedValue({
+      available: false,
+      schemaVersion: 1,
+      state: 'unavailable',
+      providers: [],
+    })
+
+    const wrapper = await mountMarketplace()
+
+    expect(wrapper.get('[data-testid="routing-health-load-state"]').text())
+      .toContain('marketplace.routingHealthSourceUnavailable')
   })
 
   afterEach(() => {
@@ -265,6 +342,33 @@ describe('ModelMarketplaceView', () => {
     expect(wrapper.get('[data-testid="probe-current-latency"]').text()).toBe('4.32 s')
     expect(wrapper.get('[data-testid="probe-consecutive-failures"]').text()).toBe('3')
     expect(wrapper.get('[data-testid="probe-history-bar"]').findAll('span')).toHaveLength(96)
+  })
+
+  it('探测成功但超过八秒时显示为响应慢，而不是异常', async () => {
+    const fixture = marketplaceFixture()
+    fixture[0] = {
+      ...fixture[0],
+      availability: {
+        window_days: 1,
+        bucket_minutes: 15,
+        success_count: 96,
+        total_count: 96,
+        availability_rate: 1,
+        last_status: 'success',
+        last_checked_at: '2026-09-04T09:05:00Z',
+        last_latency_ms: 12_001,
+        consecutive_failures: 0,
+        days: [],
+      },
+    }
+    getMarketplaceModels.mockResolvedValue(fixture)
+
+    const wrapper = await mountMarketplace()
+
+    const status = wrapper.get('[data-testid="probe-current-status"]')
+    expect(status.text()).toContain('marketplace.probeStatusSlow')
+    expect(status.classes()).toContain('text-amber-700')
+    expect(status.text()).not.toContain('marketplace.probeStatusUnavailable')
   })
 
   it('每 30 秒静默刷新，并在窗口重新聚焦时立即刷新', async () => {

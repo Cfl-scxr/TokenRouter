@@ -165,6 +165,7 @@
         <RoutingHealthOverview
           v-if="isAdmin && routingHealth"
           :snapshot="routingHealth"
+          :load-state="routingHealthLoadState"
         />
 
         <div v-if="loading" class="card px-6 py-14 text-center">
@@ -384,6 +385,8 @@ const filterPanelRef = ref<HTMLElement | null>(null)
 let marketplaceRequestInFlight = false
 let routingHealthRequestInFlight = false
 let marketplaceRefreshTimer: ReturnType<typeof setInterval> | null = null
+type RoutingHealthLoadState = 'ready' | 'source_unavailable' | 'auth_required' | 'forbidden' | 'network_error' | 'unknown_error'
+const routingHealthLoadState = ref<RoutingHealthLoadState>('ready')
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
@@ -865,8 +868,16 @@ async function loadRoutingHealth() {
   routingHealthRequestInFlight = true
   try {
     routingHealth.value = await getMarketplaceRoutingHealth()
-  } catch {
+    routingHealthLoadState.value = routingHealth.value.available ? 'ready' : 'source_unavailable'
+  } catch (error) {
     // 综合观察面独立降级，不能阻断模型广场主体，也不重复污染浏览器控制台。
+    const status = typeof error === 'object' && error !== null && 'status' in error
+      ? Number(error.status)
+      : null
+    if (status === 401) routingHealthLoadState.value = 'auth_required'
+    else if (status === 403) routingHealthLoadState.value = 'forbidden'
+    else if (status === 0) routingHealthLoadState.value = 'network_error'
+    else routingHealthLoadState.value = 'unknown_error'
     routingHealth.value = {
       available: false,
       schemaVersion: 1,

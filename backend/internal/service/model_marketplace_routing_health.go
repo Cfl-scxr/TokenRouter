@@ -82,10 +82,14 @@ type MarketplaceRoutingHealthDetail struct {
 }
 
 type MarketplaceRoutingHealthScheduledTest struct {
-	Kind       string     `json:"kind"`
-	Result     string     `json:"result"`
-	ObservedAt *time.Time `json:"observedAt"`
-	LatencyMs  *int64     `json:"latencyMs"`
+	Kind                string     `json:"kind"`
+	Result              string     `json:"result"`
+	ObservedAt          *time.Time `json:"observedAt"`
+	LatencyMs           *int64     `json:"latencyMs"`
+	SuccessRate24h      *float64   `json:"successRate24h"`
+	AverageLatencyMs24h *float64   `json:"averageLatencyMs24h"`
+	P95LatencyMs24h     *float64   `json:"p95LatencyMs24h"`
+	SampleCount24h      int64      `json:"sampleCount24h"`
 }
 
 type MarketplaceRoutingHealthAvailabilityProbe struct {

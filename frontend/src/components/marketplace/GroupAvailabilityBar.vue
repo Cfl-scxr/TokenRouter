@@ -80,6 +80,7 @@ const props = defineProps<{
 }>()
 
 const { t, locale } = useI18n()
+const slowResponseThresholdMs = 8_000
 
 const windowDays = computed(() => Math.max(props.availability?.window_days ?? 1, 1))
 const windowHours = computed(() => windowDays.value * 24)
@@ -138,7 +139,15 @@ const rateLabel = computed(() => {
 })
 
 const normalizedStatus = computed(() => props.availability?.last_status?.trim().toLowerCase() ?? '')
+const isSlowResponse = computed(() =>
+  normalizedStatus.value === 'success'
+  && typeof props.availability?.last_latency_ms === 'number'
+  && props.availability.last_latency_ms > slowResponseThresholdMs,
+)
 const statusLabel = computed(() => {
+  if (isSlowResponse.value) {
+    return t('marketplace.probeStatusSlow')
+  }
   if (normalizedStatus.value === 'success') {
     return t('marketplace.probeStatusAvailable')
   }
@@ -148,6 +157,9 @@ const statusLabel = computed(() => {
   return t('marketplace.probeStatusUnknown')
 })
 const statusTextClass = computed(() => {
+  if (isSlowResponse.value) {
+    return 'text-amber-700 dark:text-amber-300'
+  }
   if (normalizedStatus.value === 'success') {
     return 'text-emerald-700 dark:text-emerald-300'
   }
@@ -157,6 +169,9 @@ const statusTextClass = computed(() => {
   return 'text-gray-600 dark:text-dark-300'
 })
 const statusDotClass = computed(() => {
+  if (isSlowResponse.value) {
+    return 'bg-amber-400'
+  }
   if (normalizedStatus.value === 'success') {
     return 'bg-emerald-500'
   }

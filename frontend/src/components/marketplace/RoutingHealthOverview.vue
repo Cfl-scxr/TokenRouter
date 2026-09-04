@@ -25,17 +25,22 @@
       </div>
     </div>
 
-    <div v-if="!snapshot.available" class="px-4 py-5 text-sm text-amber-700 dark:text-amber-300">
-      {{ t('marketplace.routingHealthSourceUnavailable') }}
+    <div
+      v-if="!snapshot.available"
+      class="px-4 py-5 text-sm text-amber-700 dark:text-amber-300"
+      data-testid="routing-health-load-state"
+    >
+      {{ loadStateMessage }}
     </div>
 
     <div v-else class="overflow-x-auto">
-      <table class="min-w-[1120px] w-full table-fixed text-left text-xs">
+      <table class="min-w-[1220px] w-full table-fixed text-left text-xs">
         <thead class="bg-gray-50/90 text-gray-500 dark:bg-dark-950/70 dark:text-dark-400">
           <tr>
             <th class="w-[160px] px-4 py-2 font-medium">{{ t('marketplace.routingHealthChannel') }}</th>
             <th class="w-[100px] px-3 py-2 font-medium">{{ t('marketplace.probeCurrentStatus') }}</th>
             <th class="w-[90px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthScore') }}</th>
+            <th class="w-[115px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthProbe24h') }}</th>
             <th class="w-[145px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthBusinessSuccess') }}</th>
             <th class="w-[105px] px-3 py-2 font-medium">{{ t('marketplace.probeCurrentLatency') }}</th>
             <th class="w-[90px] px-3 py-2 font-medium">{{ t('marketplace.probeConsecutiveFailures') }}</th>
@@ -62,6 +67,7 @@
               </span>
             </td>
             <td class="px-3 py-2.5 font-semibold tabular-nums">{{ formatScore(provider.healthScore) }}</td>
+            <td class="px-3 py-2.5 tabular-nums">{{ formatProbeSuccess24h(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums">{{ formatBusinessSuccess(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums">{{ formatLatency(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums">{{ Math.max(provider.health.consecutiveFailures || 0, 0) }}</td>
@@ -82,9 +88,22 @@ import type { MarketplaceRoutingHealthProvider, MarketplaceRoutingHealthSnapshot
 
 const props = defineProps<{
   snapshot: MarketplaceRoutingHealthSnapshot
+  loadState?: 'ready' | 'source_unavailable' | 'auth_required' | 'forbidden' | 'network_error' | 'unknown_error'
 }>()
 
 const { t, locale } = useI18n()
+
+const loadStateMessage = computed(() => {
+  const messages = {
+    auth_required: 'marketplace.routingHealthAuthRequired',
+    forbidden: 'marketplace.routingHealthForbidden',
+    network_error: 'marketplace.routingHealthNetworkError',
+    unknown_error: 'marketplace.routingHealthUnknownError',
+    source_unavailable: 'marketplace.routingHealthSourceUnavailable',
+    ready: 'marketplace.routingHealthSourceUnavailable',
+  } as const
+  return t(messages[props.loadState ?? 'source_unavailable'])
+})
 
 const counts = computed(() => {
   const result = { healthy: 0, degraded: 0, unavailable: 0, manualDisabled: 0 }
@@ -153,6 +172,13 @@ function formatBusinessSuccess(provider: MarketplaceRoutingHealthProvider): stri
   const rate = provider.business.successRate
   if (typeof rate !== 'number') return t('marketplace.routingHealthNoBusinessSample')
   return `${(rate * 100).toFixed(1)}% (${provider.business.success}/${provider.business.total})`
+}
+
+function formatProbeSuccess24h(provider: MarketplaceRoutingHealthProvider): string {
+  const rate = provider.scheduledTest?.successRate24h
+  const samples = provider.scheduledTest?.sampleCount24h ?? 0
+  if (typeof rate !== 'number' || samples <= 0) return '-'
+  return `${(rate * 100).toFixed(1)}% (${samples})`
 }
 
 function formatLatency(provider: MarketplaceRoutingHealthProvider): string {

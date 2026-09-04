@@ -588,7 +588,18 @@ func (s *ModelMarketplaceService) resolveGroupModelsWithAccounts(ctx context.Con
 	baseModels := configuredRequestModelsFromAccounts(accounts, group.Platform)
 	resolution := s.gatewayService.resolveRequestableModelsWithAccounts(ctx, &groupID, group.Platform, baseModels, accounts)
 	if len(resolution.Models) == 0 {
-		return nil
+		// 模型广场展示人工开启账号的静态配置；临时限流只改变健康状态，不能让整个供应商卡片消失。
+		manuallyEnabledAccounts := make([]Account, 0, len(accounts))
+		for i := range accounts {
+			if accounts[i].IsActive() && accounts[i].Schedulable && accountMatchesModelListPlatform(&accounts[i], group.Platform) {
+				manuallyEnabledAccounts = append(manuallyEnabledAccounts, accounts[i])
+			}
+		}
+		fallbackModels := configuredRequestModelsFromAccounts(manuallyEnabledAccounts, group.Platform)
+		if len(fallbackModels) == 0 {
+			return nil
+		}
+		return buildMarketplaceModelDefsFromRequestable(requestableModelsFallback(fallbackModels, group.Platform).Models, group.Platform)
 	}
 	return buildMarketplaceModelDefsFromRequestable(resolution.Models, group.Platform)
 }

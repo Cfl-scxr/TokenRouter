@@ -754,6 +754,48 @@ func TestModelMarketplacePrefetchSortsByGlobalAccountPriority(t *testing.T) {
 	}
 }
 
+func TestModelMarketplaceKeepsTemporarilyLimitedProviderVisible(t *testing.T) {
+	groupID := int64(5105)
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	account := Account{
+		ID:          6105,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
+		Schedulable: true,
+		GroupIDs:    []int64{groupID},
+		AccountGroups: []AccountGroup{{
+			AccountID: 6105,
+			GroupID:   groupID,
+		}},
+		Credentials: map[string]any{"model_whitelist": []any{"gpt-5.6-sol"}},
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				"gpt-5.6-sol": map[string]any{"rate_limit_reset_at": future},
+			},
+		},
+	}
+	accountRepo := &modelsListAccountRepoStub{
+		all:     []Account{account},
+		byGroup: map[int64][]Account{groupID: {account}},
+	}
+	service := NewModelMarketplaceService(
+		&marketplaceGroupRepoStub{groups: []Group{{ID: groupID, Name: "KEDAYA", Platform: PlatformOpenAI, Status: StatusActive, RateMultiplier: 1, ActiveAccountCount: 1}}},
+		nil,
+		&GatewayService{accountRepo: accountRepo},
+		NewBillingService(nil, nil),
+		nil,
+		nil,
+		nil,
+	)
+
+	groups, err := service.ListPublic(context.Background())
+	require.NoError(t, err)
+	require.Len(t, groups, 1)
+	require.Equal(t, "KEDAYA", groups[0].Name)
+	require.Len(t, groups[0].Models, 1)
+	require.Equal(t, "gpt-5.6-sol", groups[0].Models[0].ID)
+}
+
 type marketplaceGroupRepoStub struct {
 	GroupRepository
 	groups []Group
