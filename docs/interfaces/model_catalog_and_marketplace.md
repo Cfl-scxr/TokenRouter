@@ -21,7 +21,7 @@
 
 公开市场只返回 active、非 exclusive、且至少有一个 active account 的 Group。每个 Group 在解析后没有可请求模型时也会被隐藏。排序使用 Group 的显式顺序；市场不会按临时价格或实时错误任意重排产品。
 
-展示品牌优先使用 `display_brand`，为空时回退 Group name。Group description、platform、倍率、图片独立倍率、数据共享标志和模型数作为公开产品投影。数据共享标志必须与实际 Group 策略相同，以便用户在选择前看到内容采集提示。
+展示品牌优先使用 `display_brand`，为空时回退 Group name。Group description、platform、倍率、图片独立倍率和模型数作为公开产品投影。
 
 模型级投影附带 `input_modalities`/`output_modalities` 能力元数据，来源是定价文件中的 `supported_modalities`/`supported_output_modalities`/`supports_*` 字段，只按精确（及别名）匹配查询，不做系列模糊回退；查询不到的模型不下发这两个字段，由前端能力标签降级为本地模型 ID 规则。能力查表失败不阻塞价格展示。
 

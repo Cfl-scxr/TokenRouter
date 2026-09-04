@@ -975,7 +975,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		eventCount := 0
 		tokenEventCount := 0
 		terminalEventCount := 0
-		var terminalResponseBody []byte
 		replayCollector := &openAIWSToolCallReplayCollector{}
 		firstEventType := ""
 		lastEventType := ""
@@ -1214,7 +1213,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if isTerminalEvent {
-				terminalResponseBody = openAIWSTerminalEventResponseBody(upstreamMessage)
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()
@@ -1254,7 +1252,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					OpenAIWSMode:                true,
 					UpstreamTerminalEvent:       terminalPolicy.TerminalEvent,
 					ResponseHeaders:             lease.HandshakeHeaders(),
-					ResponseBody:                cloneDataSharingRequestBody(terminalResponseBody),
 					Duration:                    time.Since(turnStart),
 					FirstTokenMs:                firstTokenMs,
 				}

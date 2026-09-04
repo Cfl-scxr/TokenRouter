@@ -118,10 +118,6 @@ backup: {
           title: 'Runtime Jobs and Temporary Data',
           description: 'Includes idempotency cache, scheduler outbox, pending auth sessions, cleanup tasks, and scheduled test results.'
         },
-        dataShareSessions: {
-          title: 'Data Sharing Sessions',
-          description: 'Includes full Agent conversations and compressed payloads captured for data-sharing groups. This can grow quickly with request volume.'
-        }
       },
       s3: {
         title: 'S3 Storage Configuration',
@@ -839,7 +835,6 @@ affiliates: {
         displayBrand: 'Brand Type',
         schedulerType: 'Scheduler',
         rateMultiplier: 'Rate Multiplier',
-        dataSharing: 'Data Sharing',
         sessionIsolation: 'Session Isolation',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
@@ -957,14 +952,6 @@ affiliates: {
         title: 'Specific fallback group',
         noFallback: 'Not specified (use default group)',
         hint: 'When this group is disabled, API keys bound to it prefer this group as fallback. Leave empty to keep falling back to the platform default group.'
-      },
-      dataSharing: {
-        title: 'Data Sharing Group',
-        enabled: 'Enabled',
-        disabled: 'Disabled',
-        enabledText: 'Collect conversation data',
-        disabledText: 'Do not collect conversation data',
-        hint: 'When enabled, users must confirm the data sharing notice before switching an API key to this group.'
       },
       sessionIsolation: {
         title: 'Enable Session Isolation',

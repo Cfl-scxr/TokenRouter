@@ -118,10 +118,6 @@ backup: {
           title: '运行时任务与临时数据',
           description: '包含幂等缓存、调度 outbox、待完成登录会话、清理任务和定时测试结果。'
         },
-        dataShareSessions: {
-          title: '数据共享会话',
-          description: '包含数据共享分组采集的完整 Agent 对话和压缩载荷，可能随请求量快速增长。'
-        }
       },
       s3: {
         title: 'S3 存储配置',
@@ -832,7 +828,6 @@ affiliates: {
         displayBrand: '品牌类型',
         schedulerType: '调度器',
         rateMultiplier: '费率倍数',
-        dataSharing: '数据共享',
         sessionIsolation: '会话隔离',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
@@ -945,14 +940,6 @@ affiliates: {
         title: '指定 fallback 分组',
         noFallback: '不指定（使用默认分组）',
         hint: '当该分组被停用时，绑定到该分组的 API Key 会优先回退到这里选择的分组；留空则继续回退到同平台默认分组。'
-      },
-      dataSharing: {
-        title: '数据共享分组',
-        enabled: '已启用',
-        disabled: '未启用',
-        enabledText: '采集对话数据',
-        disabledText: '不采集对话数据',
-        hint: '开启后，用户切换 API Key 到该分组前需要确认“数据共享须知”。'
       },
       sessionIsolation: {
         title: '开启会话隔离',

@@ -134,23 +134,23 @@ const unpricedPricing: MarketplaceModelPricing = {
 
 function marketplaceFixture(): MarketplaceGroup[] {
   return [
-    marketplaceGroup(1, 'Plus', false, [
+	marketplaceGroup(1, 'Plus', [
       marketplaceModel('gpt-5.5', 'GPT 5.5', tokenPricing),
       marketplaceModel('legacy-unpriced', 'Legacy Unpriced', unpricedPricing),
     ]),
-    marketplaceGroup(2, 'Pro', false, [
+	marketplaceGroup(2, 'Pro', [
       marketplaceModel('gpt-5.5', 'GPT 5.5', tokenPricing),
     ]),
-    marketplaceGroup(3, 'Plus Data Sharing', true, [
+	marketplaceGroup(3, 'Plus 2', [
       marketplaceModel('gpt-5.5', 'GPT 5.5', tokenPricing),
     ]),
-    marketplaceGroup(4, 'Pro Data Sharing', true, [
+	marketplaceGroup(4, 'Pro 2', [
       marketplaceModel('gpt-5.5', 'GPT 5.5', tokenPricing),
     ]),
   ]
 }
 
-function marketplaceGroup(id: number, name: string, dataSharingEnabled: boolean, models: MarketplaceGroup['models']): MarketplaceGroup {
+function marketplaceGroup(id: number, name: string, models: MarketplaceGroup['models']): MarketplaceGroup {
   return {
     id,
     name,
@@ -163,7 +163,6 @@ function marketplaceGroup(id: number, name: string, dataSharingEnabled: boolean,
     image_rate_multiplier: 1,
     official_price_ratio: id / 10,
     official_price_rmb_equivalent: id,
-    data_sharing_enabled: dataSharingEnabled,
     capacity: {
       concurrency_used: id,
       concurrency_max: 10,
@@ -224,7 +223,6 @@ describe('ModelMarketplaceView', () => {
     const wrapper = await mountMarketplace()
 
     expect(wrapper.findAll('[data-testid="marketplace-group-section"]')).toHaveLength(4)
-    expect(wrapper.findAll('[data-testid="marketplace-group-section"]').map((section) => section.text()).join('\n')).toContain('marketplace.dataSharingTag')
   })
 
   it('用户侧不展示分组容量，并将可用率状态条靠右放置', async () => {

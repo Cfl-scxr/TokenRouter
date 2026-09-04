@@ -189,16 +189,6 @@
             </span>
           </template>
 
-          <template #cell-data_sharing_enabled="{ value }">
-            <span :class="['badge', value ? 'badge-success' : 'badge-gray']">
-              {{
-                value
-                  ? t("admin.groups.dataSharing.enabled")
-                  : t("admin.groups.dataSharing.disabled")
-              }}
-            </span>
-          </template>
-
           <template #cell-session_isolation_enabled="{ value }">
             <span :class="['badge', value ? 'badge-warning' : 'badge-gray']">
               {{
@@ -689,39 +679,6 @@
           <p class="input-hint">
             {{ t("admin.groups.unavailableFallback.hint") }}
           </p>
-        </div>
-
-        <div>
-          <div class="mb-1.5 flex items-center gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.dataSharing.title") }}
-            </label>
-          </div>
-          <div class="flex items-center gap-3">
-            <button
-              type="button"
-              @click="createForm.data_sharing_enabled = !createForm.data_sharing_enabled"
-              :class="[
-                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                createForm.data_sharing_enabled ? 'group-switch-active' : 'bg-gray-300 dark:bg-dark-600',
-              ]"
-            >
-              <span
-                :class="[
-                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                  createForm.data_sharing_enabled ? 'translate-x-6' : 'translate-x-1',
-                ]"
-              />
-            </button>
-            <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{
-                createForm.data_sharing_enabled
-                  ? t("admin.groups.dataSharing.enabledText")
-                  : t("admin.groups.dataSharing.disabledText")
-              }}
-            </span>
-          </div>
-          <p class="input-hint">{{ t("admin.groups.dataSharing.hint") }}</p>
         </div>
 
         <div>
@@ -2573,46 +2530,6 @@
           <p class="input-hint">
             {{ t("admin.groups.unavailableFallback.hint") }}
           </p>
-        </div>
-
-        <div>
-          <div class="mb-1.5 flex items-center gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.dataSharing.title") }}
-            </label>
-          </div>
-          <div class="flex items-center gap-3">
-            <button
-              type="button"
-              @click="
-                editForm.data_sharing_enabled =
-                  !editForm.data_sharing_enabled
-              "
-              :class="[
-                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                editForm.data_sharing_enabled
-                  ? 'group-switch-active'
-                  : 'bg-gray-300 dark:bg-dark-600',
-              ]"
-            >
-              <span
-                :class="[
-                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                  editForm.data_sharing_enabled
-                    ? 'translate-x-6'
-                    : 'translate-x-1',
-                ]"
-              />
-            </button>
-            <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{
-                editForm.data_sharing_enabled
-                  ? t("admin.groups.dataSharing.enabledText")
-                  : t("admin.groups.dataSharing.disabledText")
-              }}
-            </span>
-          </div>
-          <p class="input-hint">{{ t("admin.groups.dataSharing.hint") }}</p>
         </div>
 
         <div>
@@ -4493,11 +4410,6 @@ const allColumns = computed<Column[]>(() => [
     sortable: true,
   },
   {
-    key: "data_sharing_enabled",
-    label: t("admin.groups.columns.dataSharing"),
-    sortable: true,
-  },
-  {
     key: "session_isolation_enabled",
     label: t("admin.groups.columns.sessionIsolation"),
     sortable: true,
@@ -4958,8 +4870,6 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   is_default: false,
-  // 数据共享分组开关
-  data_sharing_enabled: false,
   // 会话隔离开关
   session_isolation_enabled: false,
   long_context_pricing_enabled: true,
@@ -5397,8 +5307,6 @@ const editForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   is_default: false,
-  // 数据共享分组开关
-  data_sharing_enabled: false,
   // 会话隔离开关
   session_isolation_enabled: false,
   status: "active" as "active" | "inactive",
@@ -5876,7 +5784,6 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.is_default = false;
-  createForm.data_sharing_enabled = false;
   createForm.session_isolation_enabled = false;
   createForm.allow_image_generation = false;
   createForm.allow_batch_image_generation = false;
@@ -6085,7 +5992,6 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.is_exclusive = group.is_exclusive;
   editForm.is_default = group.is_default ?? false;
-  editForm.data_sharing_enabled = group.data_sharing_enabled ?? false;
   editForm.session_isolation_enabled =
     group.session_isolation_enabled ?? false;
   editForm.status = group.status;
@@ -6194,7 +6100,6 @@ const closeEditModal = () => {
   editForm.is_default = false;
   editForm.scheduler_type = "basic";
   editForm.advanced_scheduler_overrides = {};
-  editForm.data_sharing_enabled = false;
   editForm.session_isolation_enabled = false;
   editForm.unavailable_fallback_group_id = null;
   editForm.copy_accounts_from_group_ids = [];

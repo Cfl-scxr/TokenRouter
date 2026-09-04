@@ -1063,10 +1063,6 @@ type GatewayConfig struct {
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
-	// DataSharingCapture: 数据共享采集异步队列配置
-	DataSharingCapture GatewayDataSharingCaptureConfig `mapstructure:"data_sharing_capture"`
-	// DataSharingExport: 数据共享预生成导出文件配置
-	DataSharingExport GatewayDataSharingExportConfig `mapstructure:"data_sharing_export"`
 
 	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
 	UserGroupRateCacheTTLSeconds int `mapstructure:"user_group_rate_cache_ttl_seconds"`
@@ -1385,32 +1381,6 @@ type GatewayUsageRecordConfig struct {
 	AutoScaleCheckIntervalSeconds int `mapstructure:"auto_scale_check_interval_seconds"`
 	// AutoScaleCooldownSeconds: 自动扩缩容冷却时间（秒）
 	AutoScaleCooldownSeconds int `mapstructure:"auto_scale_cooldown_seconds"`
-}
-
-// GatewayDataSharingCaptureConfig 数据共享采集异步队列配置
-type GatewayDataSharingCaptureConfig struct {
-	// WorkerCount: 固定 worker 数量
-	WorkerCount int `mapstructure:"worker_count"`
-	// QueueSize: 队列容量（有界，满时直接丢弃）
-	QueueSize int `mapstructure:"queue_size"`
-	// TaskTimeoutSeconds: 单个采集写入任务超时（秒）
-	TaskTimeoutSeconds int `mapstructure:"task_timeout_seconds"`
-	// CompressionLevel: payload 压缩等级，支持 fastest/default/better/best
-	CompressionLevel string `mapstructure:"compression_level"`
-	// BufferEnabled: 是否启用进程内热点 session 缓冲池
-	BufferEnabled bool `mapstructure:"buffer_enabled"`
-	// BufferIdleFlushSeconds: session 空闲多久后触发缓冲落库（秒）
-	BufferIdleFlushSeconds int `mapstructure:"buffer_idle_flush_seconds"`
-	// BufferMaxSessions: 最大缓冲 session 数量
-	BufferMaxSessions int `mapstructure:"buffer_max_sessions"`
-	// BufferMaxPendingEvents: 最大待落库增量事件数
-	BufferMaxPendingEvents int `mapstructure:"buffer_max_pending_events"`
-}
-
-// GatewayDataSharingExportConfig 数据共享预生成导出文件配置。
-type GatewayDataSharingExportConfig struct {
-	// StorageDir: 本地导出文件保存目录，留空时使用 DATA_DIR/data-sharing-exports。
-	StorageDir string `mapstructure:"storage_dir"`
 }
 
 // TLSFingerprintConfig TLS指纹伪装配置
@@ -1896,7 +1866,6 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.Environment = strings.TrimSpace(cfg.Log.Environment)
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
-	cfg.Gateway.DataSharingExport.StorageDir = strings.TrimSpace(cfg.Gateway.DataSharingExport.StorageDir)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
@@ -2570,15 +2539,6 @@ func setDefaults() {
 	viper.SetDefault("gateway.usage_record.auto_scale_down_step", 16)
 	viper.SetDefault("gateway.usage_record.auto_scale_check_interval_seconds", 3)
 	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
-	viper.SetDefault("gateway.data_sharing_capture.worker_count", 32)
-	viper.SetDefault("gateway.data_sharing_capture.queue_size", 32768)
-	viper.SetDefault("gateway.data_sharing_capture.task_timeout_seconds", 15)
-	viper.SetDefault("gateway.data_sharing_capture.compression_level", "fastest")
-	viper.SetDefault("gateway.data_sharing_capture.buffer_enabled", true)
-	viper.SetDefault("gateway.data_sharing_capture.buffer_idle_flush_seconds", 30)
-	viper.SetDefault("gateway.data_sharing_capture.buffer_max_sessions", 4096)
-	viper.SetDefault("gateway.data_sharing_capture.buffer_max_pending_events", 65536)
-	viper.SetDefault("gateway.data_sharing_export.storage_dir", "")
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
 	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
@@ -3709,27 +3669,6 @@ func (c *Config) Validate() error {
 		if c.Gateway.UsageRecord.AutoScaleCooldownSeconds < 0 {
 			return fmt.Errorf("gateway.usage_record.auto_scale_cooldown_seconds must be non-negative")
 		}
-	}
-	if c.Gateway.DataSharingCapture.WorkerCount <= 0 {
-		return fmt.Errorf("gateway.data_sharing_capture.worker_count must be positive")
-	}
-	if c.Gateway.DataSharingCapture.QueueSize <= 0 {
-		return fmt.Errorf("gateway.data_sharing_capture.queue_size must be positive")
-	}
-	if c.Gateway.DataSharingCapture.TaskTimeoutSeconds <= 0 {
-		return fmt.Errorf("gateway.data_sharing_capture.task_timeout_seconds must be positive")
-	}
-	if level := strings.ToLower(strings.TrimSpace(c.Gateway.DataSharingCapture.CompressionLevel)); level != "fastest" && level != "default" && level != "better" && level != "best" {
-		return fmt.Errorf("gateway.data_sharing_capture.compression_level must be one of fastest, default, better, best")
-	}
-	if c.Gateway.DataSharingCapture.BufferIdleFlushSeconds <= 0 {
-		return fmt.Errorf("gateway.data_sharing_capture.buffer_idle_flush_seconds must be positive")
-	}
-	if c.Gateway.DataSharingCapture.BufferMaxSessions <= 0 {
-		return fmt.Errorf("gateway.data_sharing_capture.buffer_max_sessions must be positive")
-	}
-	if c.Gateway.DataSharingCapture.BufferMaxPendingEvents <= 0 {
-		return fmt.Errorf("gateway.data_sharing_capture.buffer_max_pending_events must be positive")
 	}
 	if c.Gateway.UserGroupRateCacheTTLSeconds <= 0 {
 		return fmt.Errorf("gateway.user_group_rate_cache_ttl_seconds must be positive")

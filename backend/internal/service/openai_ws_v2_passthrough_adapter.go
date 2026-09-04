@@ -1413,7 +1413,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					OpenAIWSMode:                true,
 					UpstreamTerminalEvent:       normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
 					ResponseHeaders:             cloneHeader(handshakeHeaders),
-					ResponseBody:                cloneDataSharingRequestBody(turn.TerminalResponseBody),
 					Duration:                    turn.Duration,
 					FirstTokenMs:                turn.FirstTokenMs,
 				}
@@ -1580,7 +1579,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		OpenAIWSMode:                true,
 		UpstreamTerminalEvent:       normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),
 		ResponseHeaders:             cloneHeader(handshakeHeaders),
-		ResponseBody:                cloneDataSharingRequestBody(relayResult.TerminalResponseBody),
 		Duration:                    relayResult.Duration,
 		FirstTokenMs:                relayResult.FirstTokenMs,
 	}
