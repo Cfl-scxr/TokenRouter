@@ -11,6 +11,7 @@ ARG GOLANG_IMAGE=golang:1.27.0-alpine
 ARG ALPINE_IMAGE=alpine:3.20
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
+ARG NODE_MAX_OLD_SPACE_SIZE=3072
 
 # -----------------------------------------------------------------------------
 # Stage 1: Frontend Builder
@@ -18,7 +19,9 @@ ARG GOSUMDB=sum.golang.google.cn
 FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
-ENV NODE_OPTIONS=--max-old-space-size=1536
+ARG NODE_MAX_OLD_SPACE_SIZE
+# 当前完整管理端构建峰值已超过 1.5 GiB；保留构建参数便于小内存环境显式调整。
+ENV NODE_OPTIONS=--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}
 
 # 安装 pnpm，并固定到与 lockfile 兼容的精确版本，避免配置校验规则变化破坏构建。
 RUN corepack enable && corepack prepare pnpm@9.15.9 --activate

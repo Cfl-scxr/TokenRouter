@@ -14,6 +14,8 @@
 
 标准发布先生成一次前端静态资源，再由独立 runner 把同一份前端嵌入各平台 Go 二进制并行交叉编译；最终发布阶段统一归档二进制，并用 Linux `amd64`、`arm64` 产物组装多架构镜像和必要运行时工具。GitHub Release 同时发布 Linux `amd64`、Linux `arm64` 等产物，具体矩阵以 [release workflow](../../.github/workflows/release.yml) 为准。
 
+源码 Docker 构建的前端 Node 堆上限由 `NODE_MAX_OLD_SPACE_SIZE` 构建参数控制，默认 3072 MiB。完整管理端构建峰值已经超过旧的 1536 MiB 固定值；资源受限环境可以显式调低，但必须以 `pnpm run build` 成功作为发布前提，不能用跳过前端构建的方式生成生产镜像。
+
 仓库支持以下运行形态：
 
 | 形态 | 权威入口 | 持久依赖与边界 |
