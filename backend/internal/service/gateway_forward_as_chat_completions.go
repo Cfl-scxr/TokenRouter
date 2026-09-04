@@ -501,12 +501,3 @@ func writeGatewayCCError(c *gin.Context, statusCode int, errType, message string
 		},
 	})
 }
-
-// openAIUsageFromClaudeUsage 把通用 usage 映射成 Chat Completions 快照需要的 usage。
-func openAIUsageFromClaudeUsage(usage ClaudeUsage) *OpenAIUsage {
-	return &OpenAIUsage{
-		InputTokens:          usage.InputTokens,
-		OutputTokens:         usage.OutputTokens,
-		CacheReadInputTokens: usage.CacheReadInputTokens,
-	}
-}

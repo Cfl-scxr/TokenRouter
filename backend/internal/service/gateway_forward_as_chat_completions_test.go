@@ -281,12 +281,3 @@ func TestHandleCCBufferedFromAnthropic_WritesToolCall(t *testing.T) {
 	require.Equal(t, "lookup", gjson.GetBytes(rec.Body.Bytes(), "choices.0.message.tool_calls.0.function.name").String())
 	require.JSONEq(t, `{"q":"hi"}`, gjson.GetBytes(rec.Body.Bytes(), "choices.0.message.tool_calls.0.function.arguments").String())
 }
-
-func TestOpenAIUsageFromClaudeUsage(t *testing.T) {
-	t.Parallel()
-
-	usage := openAIUsageFromClaudeUsage(ClaudeUsage{InputTokens: 3, OutputTokens: 4, CacheReadInputTokens: 2})
-	require.Equal(t, 3, usage.InputTokens)
-	require.Equal(t, 4, usage.OutputTokens)
-	require.Equal(t, 2, usage.CacheReadInputTokens)
-}
