@@ -77,6 +77,7 @@ describe('RoutingHealthOverview', () => {
     expect(wrapper.text()).toContain('13 ms')
     expect(wrapper.text()).toContain('marketplace.routingHealthManualDisabled')
     expect(wrapper.text()).toContain('marketplace.routingHealthNoAutoReturn')
+    expect(wrapper.get('th[title="marketplace.routingHealthScoreHint"]').exists()).toBe(true)
   })
 
   it('健康快照不可用时显示独立降级状态', () => {
@@ -91,5 +92,82 @@ describe('RoutingHealthOverview', () => {
 
     expect(wrapper.text()).toContain('marketplace.routingHealthSourceUnavailable')
     expect(wrapper.findAll('[data-testid="routing-health-provider"]')).toHaveLength(0)
+  })
+
+  it('对尚未探测状态给出非故障解释', () => {
+    const snapshot: MarketplaceRoutingHealthSnapshot = {
+      available: true,
+      schemaVersion: 1,
+      state: 'observed',
+      observedAt: '2026-09-04T12:39:31.675Z',
+      routingChainId: 'tokenrouter-primary',
+      providers: [provider(1, 'unknown')],
+    }
+
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot } })
+
+    expect(wrapper.text()).toContain('marketplace.probeStatusUnknown')
+    expect(wrapper.get('[data-testid="routing-health-provider"] span[title="marketplace.probeStatusUnknownHint"]').exists()).toBe(true)
+  })
+
+  it('单次失败进入冷却时显示波动并保留健康分', () => {
+    const transient = provider(1, 'unavailable')
+    transient.routeState = 'cooldown'
+    transient.healthScore = 76
+    transient.health.consecutiveFailures = 1
+    if (transient.scheduledTest) transient.scheduledTest.result = 'failed'
+    const snapshot: MarketplaceRoutingHealthSnapshot = {
+      available: true,
+      schemaVersion: 1,
+      state: 'observed',
+      providers: [transient],
+    }
+
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot } })
+    const cells = wrapper.get('[data-testid="routing-health-provider"]').findAll('td')
+
+    expect(cells[1].text()).toContain('marketplace.routingHealthDegraded')
+    expect(cells[2].text()).toBe('76')
+    expect(cells[1].get('span').attributes('title')).toBe('marketplace.routingHealthRouteCooldownHint')
+  })
+
+  it('只有累计故障才显示故障和零分', () => {
+    const failed = provider(1, 'unavailable')
+    failed.routeState = 'unavailable'
+    failed.healthScore = 0
+    failed.health.consecutiveFailures = 2
+    const snapshot: MarketplaceRoutingHealthSnapshot = {
+      available: true,
+      schemaVersion: 1,
+      state: 'observed',
+      providers: [failed],
+    }
+
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot } })
+    const cells = wrapper.get('[data-testid="routing-health-provider"]').findAll('td')
+
+    expect(cells[1].text()).toContain('marketplace.routingHealthUnavailable')
+    expect(cells[2].text()).toBe('0')
+    expect(cells[1].get('span').attributes('title')).toBe('marketplace.routingHealthRouteUnavailableHint')
+  })
+
+  it('恢复观察不显示为未知或故障', () => {
+    const recovering = provider(1, 'recovering')
+    recovering.routeState = 'warming'
+    recovering.healthScore = 69
+    recovering.health.warming = true
+    const snapshot: MarketplaceRoutingHealthSnapshot = {
+      available: true,
+      schemaVersion: 1,
+      state: 'observed',
+      providers: [recovering],
+    }
+
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot } })
+    const cells = wrapper.get('[data-testid="routing-health-provider"]').findAll('td')
+
+    expect(cells[1].text()).toContain('marketplace.routingHealthRecovering')
+    expect(cells[2].text()).toBe('69')
+    expect(cells[1].get('span').attributes('title')).toBe('marketplace.routingHealthRouteWarmingHint')
   })
 })

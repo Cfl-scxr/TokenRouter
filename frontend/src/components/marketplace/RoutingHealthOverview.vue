@@ -39,7 +39,7 @@
           <tr>
             <th class="w-[160px] px-4 py-2 font-medium">{{ t('marketplace.routingHealthChannel') }}</th>
             <th class="w-[100px] px-3 py-2 font-medium">{{ t('marketplace.probeCurrentStatus') }}</th>
-            <th class="w-[90px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthScore') }}</th>
+            <th class="w-[90px] px-3 py-2 font-medium" :title="t('marketplace.routingHealthScoreHint')">{{ t('marketplace.routingHealthScore') }}</th>
             <th class="w-[115px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthProbe24h') }}</th>
             <th class="w-[145px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthBusinessSuccess') }}</th>
             <th class="w-[105px] px-3 py-2 font-medium">{{ t('marketplace.probeCurrentLatency') }}</th>
@@ -61,12 +61,12 @@
               <div class="truncate text-[11px] text-gray-500 dark:text-dark-400">{{ provider.supplierName }}</div>
             </td>
             <td class="px-3 py-2.5">
-              <span class="inline-flex items-center gap-1.5 font-semibold" :class="healthTextClass(provider.healthLevel)">
-                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="healthDotClass(provider.healthLevel)" />
-                {{ healthLabel(provider.healthLevel) }}
+              <span class="inline-flex items-center gap-1.5 font-semibold" :class="healthTextClass(currentStatusKey(provider))" :title="healthStatusHint(provider)">
+                <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="healthDotClass(currentStatusKey(provider))" />
+                {{ healthLabel(currentStatusKey(provider)) }}
               </span>
             </td>
-            <td class="px-3 py-2.5 font-semibold tabular-nums">{{ formatScore(provider.healthScore) }}</td>
+            <td class="px-3 py-2.5 font-semibold tabular-nums" :title="scoreHint(provider)">{{ formatScore(provider.healthScore) }}</td>
             <td class="px-3 py-2.5 tabular-nums">{{ formatProbeSuccess24h(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums">{{ formatBusinessSuccess(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums">{{ formatLatency(provider) }}</td>
@@ -108,9 +108,10 @@ const loadStateMessage = computed(() => {
 const counts = computed(() => {
   const result = { healthy: 0, degraded: 0, unavailable: 0, manualDisabled: 0 }
   for (const provider of props.snapshot.providers) {
-    if (provider.healthLevel === 'healthy') result.healthy += 1
-    else if (provider.healthLevel === 'degraded') result.degraded += 1
-    else if (provider.healthLevel === 'manual_disabled') result.manualDisabled += 1
+    const status = currentStatusKey(provider)
+    if (status === 'healthy') result.healthy += 1
+    else if (status === 'degraded' || status === 'recovering') result.degraded += 1
+    else if (status === 'manual_disabled') result.manualDisabled += 1
     else result.unavailable += 1
   }
   return result
@@ -122,27 +123,52 @@ const currentHitLabel = computed(() => {
   return t('marketplace.routingHealthCurrentHit', { supplier: hit.supplierName, model: hit.model || '-' })
 })
 
+function currentStatusKey(provider: MarketplaceRoutingHealthProvider): string {
+  if (!provider.manual.enabled || provider.routeState === 'manual_disabled') return 'manual_disabled'
+  if (provider.routeState === 'unavailable' || provider.routeState === 'needs_action') return 'unavailable'
+  if (provider.routeState === 'cooldown') return 'degraded'
+  if (provider.routeState === 'warming') return 'recovering'
+  if (provider.healthLevel === 'needs_action') return 'unavailable'
+  if (provider.healthLevel === 'recovering') return 'recovering'
+  if (provider.healthLevel === 'degraded') return 'degraded'
+  if (provider.healthLevel === 'healthy') return 'healthy'
+  return 'unknown'
+}
+
 function healthLabel(level: string): string {
   const labels: Record<string, string> = {
     healthy: t('marketplace.routingHealthHealthy'),
     degraded: t('marketplace.routingHealthDegraded'),
+    recovering: t('marketplace.routingHealthRecovering'),
     unavailable: t('marketplace.routingHealthUnavailable'),
     manual_disabled: t('marketplace.routingHealthManualDisabled'),
+    unknown: t('marketplace.probeStatusUnknown'),
   }
   return labels[level] ?? t('marketplace.probeStatusUnknown')
 }
 
+function healthStatusHint(provider: MarketplaceRoutingHealthProvider): string {
+  const status = currentStatusKey(provider)
+  if (status === 'unknown') return t('marketplace.probeStatusUnknownHint')
+  if (provider.routeState === 'cooldown') return t('marketplace.routingHealthRouteCooldownHint')
+  if (provider.routeState === 'warming') return t('marketplace.routingHealthRouteWarmingHint')
+  if (provider.routeState === 'unavailable' || provider.routeState === 'needs_action') return t('marketplace.routingHealthRouteUnavailableHint')
+  return healthLabel(status)
+}
+
 function healthTextClass(level: string): string {
   if (level === 'healthy') return 'text-emerald-700 dark:text-emerald-300'
-  if (level === 'degraded') return 'text-amber-700 dark:text-amber-300'
+  if (level === 'degraded' || level === 'recovering') return 'text-amber-700 dark:text-amber-300'
   if (level === 'manual_disabled') return 'text-gray-600 dark:text-dark-300'
+  if (level === 'unknown') return 'text-gray-500 dark:text-dark-400'
   return 'text-rose-700 dark:text-rose-300'
 }
 
 function healthDotClass(level: string): string {
   if (level === 'healthy') return 'bg-emerald-500'
-  if (level === 'degraded') return 'bg-amber-400'
+  if (level === 'degraded' || level === 'recovering') return 'bg-amber-400'
   if (level === 'manual_disabled') return 'bg-gray-400 dark:bg-dark-500'
+  if (level === 'unknown') return 'bg-gray-400 dark:bg-dark-500'
   return 'bg-rose-500'
 }
 
@@ -166,6 +192,11 @@ function routeTextClass(state: string): string {
 
 function formatScore(score?: number | null): string {
   return typeof score === 'number' ? `${Math.round(score)}` : '-'
+}
+
+function scoreHint(provider: MarketplaceRoutingHealthProvider): string {
+  if (typeof provider.healthScore !== 'number') return t('marketplace.routingHealthScoreNoData')
+  return t('marketplace.routingHealthScoreHint')
 }
 
 function formatBusinessSuccess(provider: MarketplaceRoutingHealthProvider): string {
