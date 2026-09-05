@@ -2344,6 +2344,9 @@ func createOpenAITestPayload(modelID string, prompt string, isOAuth bool) map[st
 			},
 		},
 		"stream": true,
+		// 主动探针只需要确认首个可用响应，限制输出上限避免上游按默认大额度预扣，
+		// 从而把“余额不足以覆盖探针预扣”误判成供应商不可用。
+		"max_output_tokens": 16,
 	}
 
 	// OAuth accounts using ChatGPT internal API require store: false
@@ -2372,6 +2375,8 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 			},
 		},
 		"stream": true,
+		// 主动探针只验证连接和首个响应，限制输出上限避免兼容上游按默认额度预扣。
+		"max_tokens": 16,
 	}
 }
 

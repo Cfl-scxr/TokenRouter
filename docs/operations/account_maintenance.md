@@ -40,6 +40,8 @@ Kimi、Zhipu、DeepSeek 的连接测试按账号 `api_protocol` 选择原生 Ant
 
 管理端连接测试请求必须显式选择 `test_type=text|image` 并传入同一字段的自定义 `prompt`。文字测试不再因为模型名称包含图片标记而切换端点；图片测试也不再依赖模型名称命中规则，而是由 OpenAI、Gemini 或 Grok 账号的平台图片端点执行。OpenAI 的 `compact` 与 `legacy_compact` 仅执行固定载荷的能力探测，不显示或使用自定义提示词。未携带 `test_type` 的历史调用才允许回退到旧模型名判断。图片和文字的结果分别通过 SSE 图片事件和内容事件返回；不支持图片端点的平台应直接返回可诊断的错误，不得静默改成文字测试。
 
+主动分组探针的文字请求只用于确认上游连通和首个有效响应，OpenAI Responses 与 Chat Completions 载荷均将输出上限限制为 16 个 token。这样可以避免兼容渠道按默认长输出额度预扣，把“余额不足以覆盖探针预扣”误报为供应商不可用；真实业务请求仍使用自身的输出预算。
+
 ## 额度与能力探测
 
 平台可维护独立的上游额度快照：OpenAI/Codex 窗口、Gemini tier/model quota、Antigravity credits、Grok 计费/媒体资格、Qoder Credits，以及 Kimi/Zhipu/DeepSeek 的统一用量监控快照等。快照用于调度、容量展示和诊断，不是 TokenRouter 用户余额或订阅账本。

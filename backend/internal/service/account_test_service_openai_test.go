@@ -30,6 +30,16 @@ type queuedHTTPUpstream struct {
 	tlsFlags  []bool
 }
 
+func TestCreateOpenAITestPayloadUsesLowProbeOutputLimit(t *testing.T) {
+	payload := createOpenAITestPayload("gpt-5.6-sol", "hi", false)
+	require.Equal(t, 16, payload["max_output_tokens"])
+}
+
+func TestCreateOpenAIChatCompletionsTestPayloadUsesLowProbeOutputLimit(t *testing.T) {
+	payload := createOpenAIChatCompletionsTestPayload("gpt-5.6-sol", "hi")
+	require.Equal(t, 16, payload["max_tokens"])
+}
+
 func (u *queuedHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
 	return nil, fmt.Errorf("unexpected Do call")
 }
