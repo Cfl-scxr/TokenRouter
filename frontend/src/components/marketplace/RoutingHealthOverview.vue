@@ -38,7 +38,7 @@
     </div>
 
     <div v-else class="routing-scroll overflow-auto">
-      <table class="routing-table min-w-[1380px] w-full table-fixed text-left text-xs">
+      <table class="routing-table min-w-[1220px] w-full table-fixed text-left text-xs">
         <thead class="sticky top-0 z-10 bg-gray-50 text-gray-500 dark:bg-dark-950 dark:text-dark-400">
           <tr>
             <th class="w-[160px] px-4 py-2 font-medium">{{ t('marketplace.routingHealthChannel') }}</th>
@@ -48,7 +48,6 @@
             <th class="w-[145px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthBusinessSuccess') }}</th>
             <th class="w-[105px] px-3 py-2 font-medium">{{ t('marketplace.probeCurrentLatency') }}</th>
             <th class="w-[90px] px-3 py-2 font-medium">{{ t('marketplace.probeConsecutiveFailures') }}</th>
-            <th class="w-[160px] px-3 py-2 font-medium" :title="t('marketplace.routingHealthUpstreamAssetHint')">{{ t('marketplace.routingHealthUpstreamAsset') }}</th>
             <th class="w-[110px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthRouteState') }}</th>
             <th class="w-[145px] px-3 py-2 font-medium">{{ t('marketplace.routingHealthNextProbe') }}</th>
             <th class="w-[145px] px-3 py-2 font-medium">{{ t('marketplace.probeLastCheckedAt') }}</th>
@@ -90,9 +89,6 @@
             <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.routingHealthBusinessSuccess')">{{ formatBusinessSuccess(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.probeCurrentLatency')">{{ formatLatency(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.probeConsecutiveFailures')" :class="provider.health.consecutiveFailures >= 2 ? 'text-rose-700 dark:text-rose-300' : provider.health.consecutiveFailures > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'">{{ Math.max(provider.health.consecutiveFailures || 0, 0) }}</td>
-            <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.routingHealthUpstreamAsset')">
-              <ChannelUpstreamAssetCell :assets="upstreamAssetsForProvider(provider)" />
-            </td>
             <td class="px-3 py-2.5 font-medium" :data-label="t('marketplace.routingHealthRouteState')" :class="routeTextClass(provider.routeState)">{{ routeLabel(provider.routeState) }}</td>
             <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.routingHealthNextProbe')">{{ nextProbeLabel(provider) }}</td>
             <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.probeLastCheckedAt')">{{ formatDateTime(lastProbeAt(provider)) }}</td>
@@ -107,22 +103,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MarketplaceRoutingHealthProvider, MarketplaceRoutingHealthSnapshot } from '@/types'
-import ChannelUpstreamAssetCell from './ChannelUpstreamAssetCell.vue'
-import type { ChannelUpstreamAsset } from './channelUpstreamAsset'
 
 const props = defineProps<{
   snapshot: MarketplaceRoutingHealthSnapshot
   loadState?: 'ready' | 'source_unavailable' | 'auth_required' | 'forbidden' | 'network_error' | 'unknown_error'
-  upstreamAssetsByGroup?: Record<string, ChannelUpstreamAsset[] | undefined>
 }>()
 
 const { t, locale } = useI18n()
-
-function upstreamAssetsForProvider(provider: MarketplaceRoutingHealthProvider): ChannelUpstreamAsset[] {
-  const assets = props.upstreamAssetsByGroup?.[provider.names.group] ?? []
-  const exactAccount = assets.filter(asset => asset.accountName === provider.names.account)
-  return exactAccount.length > 0 ? exactAccount : assets
-}
 
 // 只调整观察列表顺序，不修改快照或实际路由优先级。
 const sortedProviders = computed(() => [...props.snapshot.providers].sort((left, right) =>

@@ -38,6 +38,12 @@
           {{ consecutiveFailuresLabel }}
         </div>
       </div>
+      <div v-if="upstreamAssets !== undefined" class="probe-upstream-assets col-span-2 min-w-0" data-testid="probe-upstream-assets">
+        <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
+          {{ t('marketplace.routingHealthUpstreamAsset') }}
+        </div>
+        <ChannelUpstreamAssetCell :assets="upstreamAssets" />
+      </div>
     </div>
 
     <div class="flex min-w-0 items-center gap-2">
@@ -76,10 +82,13 @@ import { computed } from 'vue'
 import { useNow } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { MarketplaceGroupAvailability, MarketplaceGroupAvailabilityDay } from '@/types'
+import ChannelUpstreamAssetCell from './ChannelUpstreamAssetCell.vue'
+import type { ChannelUpstreamAsset } from './channelUpstreamAsset'
 
 const props = defineProps<{
   availability?: MarketplaceGroupAvailability | null
   currentStatus?: string
+  upstreamAssets?: ChannelUpstreamAsset[]
 }>()
 
 const { t, locale } = useI18n()
@@ -274,5 +283,6 @@ function bucketTitle(bucket: MarketplaceGroupAvailabilityDay): string {
 .probe-overview { container-type: inline-size; }
 @container (min-width: 440px) {
   .probe-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .probe-upstream-assets { grid-column: span 2; }
 }
 </style>

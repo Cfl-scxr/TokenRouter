@@ -10,9 +10,6 @@ vi.mock('vue-i18n', () => ({
       if (key === 'marketplace.routingHealthCurrentHit') {
         return `${params?.supplier} / ${params?.model}`
       }
-      if (key === 'marketplace.routingHealthAccountMultiplier') {
-        return `${key} ${params?.multiplier}`
-      }
       return key
     },
   }),
@@ -120,24 +117,13 @@ describe('RoutingHealthOverview', () => {
     expect(wrapper.get('th[title="marketplace.routingHealthScoreHint"]').exists()).toBe(true)
   })
 
-  it('在连续失败后展示匹配账号的上游额度和倍率', () => {
-    const channel = provider(1)
-    channel.names.account = 'primary-account'
+  it('健康总表不展示上游额度列', () => {
     const wrapper = mount(RoutingHealthOverview, { props: {
-      snapshot: { available: true, schemaVersion: 1, state: 'observed', providers: [channel] },
-      upstreamAssetsByGroup: {
-        'channel-1': [
-          { accountId: 1, accountName: 'other-account', rateMultiplier: 2 },
-          { accountId: 2, accountName: 'primary-account', rateMultiplier: 0.7 },
-        ],
-      },
+      snapshot: { available: true, schemaVersion: 1, state: 'observed', providers: [provider(1)] },
     } })
 
-    const cells = wrapper.get('[data-testid="routing-health-provider"]').findAll('td')
-    expect(cells[7].text()).toContain('marketplace.routingHealthAccountMultiplier')
-    expect(cells[7].text()).toContain('x0.7')
-    expect(cells[7].text()).not.toContain('x2')
-    expect(cells[8].text()).toContain('marketplace.routingHealthRouteAvailable')
+    expect(wrapper.find('th[title="marketplace.routingHealthUpstreamAssetHint"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="routing-health-provider"]').findAll('td')).toHaveLength(10)
   })
 
   it('健康快照不可用时显示独立降级状态', () => {

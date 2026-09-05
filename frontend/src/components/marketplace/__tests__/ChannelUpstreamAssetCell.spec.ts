@@ -10,7 +10,7 @@ vi.mock('vue-i18n', () => ({
         'marketplace.routingHealthUpstreamQuotaPercent': `额度 ${params?.percent}% 可用`,
         'marketplace.routingHealthUpstreamQuotaRemaining': `额度剩余 ${params?.value}`,
         'marketplace.routingHealthUpstreamUnlimited': '额度 不限量',
-        'marketplace.routingHealthAccountMultiplier': `账号倍率 ${params?.multiplier}`,
+        'marketplace.routingHealthEffectiveMultiplier': `折算倍率 ${params?.multiplier}`,
         'marketplace.routingHealthMoreAccounts': `另有 ${params?.count} 个账号`,
       }
       return labels[key] ?? key
@@ -19,11 +19,12 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('ChannelUpstreamAssetCell', () => {
-  it('紧凑展示上游余额、剩余额度和本地账号倍率', () => {
+  it('紧凑展示上游余额、剩余额度和分组折算倍率', () => {
     const wrapper = mount(ChannelUpstreamAssetCell, { props: { assets: [{
       accountId: 8,
       accountName: 'fastaitoken',
       rateMultiplier: 0.8,
+      groupRateMultiplier: 2,
       usage: {
         account_id: 8,
         adapter: 'sub2api',
@@ -38,10 +39,10 @@ describe('ChannelUpstreamAssetCell', () => {
 
     expect(wrapper.text()).toContain('余额 $12.5')
     expect(wrapper.text()).toContain('额度 75% 可用')
-    expect(wrapper.text()).toContain('账号倍率 x0.8')
+    expect(wrapper.text()).toContain('折算倍率 x1.6')
   })
 
-  it('支持多币种余额和无限额度，完全无数据时显示占位符', () => {
+  it('支持多币种余额和无限额度，倍率缺失时按一折算', () => {
     const populated = mount(ChannelUpstreamAssetCell, { props: { assets: [{
       accountId: 5,
       accountName: 'deepseek',
@@ -59,7 +60,10 @@ describe('ChannelUpstreamAssetCell', () => {
     expect(populated.text()).toContain('余额 ¥20 · $3.5')
     expect(populated.text()).toContain('额度 不限量')
 
-    const empty = mount(ChannelUpstreamAssetCell, { props: { assets: [{ accountId: 6, accountName: 'unknown' }] } })
-    expect(empty.text()).toBe('-')
+    const defaultRate = mount(ChannelUpstreamAssetCell, { props: { assets: [{ accountId: 6, accountName: 'unknown' }] } })
+    expect(defaultRate.text()).toContain('折算倍率 x1')
+
+    const invalidRate = mount(ChannelUpstreamAssetCell, { props: { assets: [{ accountId: 7, accountName: 'invalid', rateMultiplier: -1 }] } })
+    expect(invalidRate.text()).toBe('-')
   })
 })

@@ -125,16 +125,19 @@ function quotaLine(usage: UpstreamUsageInfo | null): string {
   return ''
 }
 
-function multiplierLine(multiplier?: number): string {
-  if (typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier < 0) return ''
-  return t('marketplace.routingHealthAccountMultiplier', {
+function multiplierLine(asset: ChannelUpstreamAsset): string {
+  const accountMultiplier = asset.rateMultiplier == null ? 1 : asset.rateMultiplier
+  const groupMultiplier = asset.groupRateMultiplier == null ? 1 : asset.groupRateMultiplier
+  if (!Number.isFinite(accountMultiplier) || accountMultiplier < 0 || !Number.isFinite(groupMultiplier) || groupMultiplier < 0) return ''
+  const multiplier = accountMultiplier * groupMultiplier
+  return t('marketplace.routingHealthEffectiveMultiplier', {
     multiplier: `x${trimFixed(multiplier, 2)}`,
   })
 }
 
 function assetLines(asset: ChannelUpstreamAsset): string[] {
   const usage = normalizedUsage(asset.usage)
-  return [balanceLine(usage), quotaLine(usage), multiplierLine(asset.rateMultiplier)].filter(Boolean)
+  return [balanceLine(usage), quotaLine(usage), multiplierLine(asset)].filter(Boolean)
 }
 
 const detailTitle = computed(() => visibleAssets.value.map((asset) => {

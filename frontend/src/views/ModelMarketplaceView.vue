@@ -166,7 +166,6 @@
           v-if="isAdmin && routingHealth"
           :snapshot="routingHealth"
           :load-state="routingHealthLoadState"
-          :upstream-assets-by-group="upstreamAssetsByGroup"
         />
 
         <div v-if="loading" class="card px-6 py-14 text-center">
@@ -281,9 +280,10 @@
               >
                 <!-- 用户侧只展示可用率，并利用释放出的空间将状态条靠右放置。 -->
                 <GroupAvailabilityBar
-                  v-if="group.availability"
+                  v-if="group.availability || isAdmin"
                   :availability="group.availability"
                   :current-status="routingHealth?.available ? routingHealth.providers.find(provider => provider.names.group === group.name)?.probeStatus : undefined"
+                  :upstream-assets="isAdmin ? upstreamAssetsByGroup[group.name] : undefined"
                   class="min-w-0"
                 />
                 <GroupBusinessUsage v-if="isAdmin" v-bind="businessUsage[group.id] || {}" />
@@ -426,6 +426,7 @@ const upstreamAssetsByGroup = computed<Record<string, ChannelUpstreamAsset[]>>((
         accountId: account.id,
         accountName: account.name,
         rateMultiplier: account.rate_multiplier,
+        groupRateMultiplier: groups.value.find(group => group.id === groupId)?.rate_multiplier,
         usage: upstreamUsageByAccountId.value[String(account.id)],
       })
     }

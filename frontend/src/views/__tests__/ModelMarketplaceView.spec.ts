@@ -87,8 +87,8 @@ vi.mock('vue-i18n', async () => {
         if (key === 'marketplace.routingHealthUpstreamQuotaPercent') {
           return `额度 ${params?.percent || ''}% 可用`
         }
-        if (key === 'marketplace.routingHealthAccountMultiplier') {
-          return `账号倍率 ${params?.multiplier || ''}`
+        if (key === 'marketplace.routingHealthEffectiveMultiplier') {
+          return `折算倍率 ${params?.multiplier || ''}`
         }
 
         return key
@@ -348,7 +348,7 @@ describe('ModelMarketplaceView', () => {
     expect(wrapper.find('[data-testid="group-business-usage"]').exists()).toBe(false)
   })
 
-  it('管理员按分组映射上游额度和账号倍率，并在五分钟内复用结果', async () => {
+  it('管理员在分组探针区展示上游额度和折算倍率，并在五分钟内复用结果', async () => {
     vi.useFakeTimers()
     authState.isAdmin = true
     const fixture = marketplaceFixture()
@@ -379,10 +379,11 @@ describe('ModelMarketplaceView', () => {
     expect(listAccounts).toHaveBeenCalledTimes(1)
     expect(queryBatchUpstreamUsage).toHaveBeenCalledTimes(1)
     expect(queryBatchUpstreamUsage).toHaveBeenCalledWith([8])
-    const asset = wrapper.get('[data-testid="channel-upstream-asset"]')
+    const asset = wrapper.get('[data-testid="probe-upstream-assets"]')
     expect(asset.text()).toContain('余额 $12.5')
     expect(asset.text()).toContain('额度 75% 可用')
-    expect(asset.text()).toContain('账号倍率 x0.8')
+    expect(asset.text()).toContain('折算倍率 x0.8')
+    expect(wrapper.find('[data-testid="routing-health-overview"] th[title="marketplace.routingHealthUpstreamAssetHint"]').exists()).toBe(false)
 
     window.dispatchEvent(new Event('focus'))
     await flushPromises()
