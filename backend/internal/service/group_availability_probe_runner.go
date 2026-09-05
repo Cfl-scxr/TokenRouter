@@ -306,24 +306,56 @@ func (s *GroupAvailabilityProbeRunnerService) saveResult(ctx context.Context, du
 
 func (s *GroupAvailabilityProbeRunnerService) selectProbeAccount(ctx context.Context, due GroupAvailabilityProbeDueGroup, modelID string) (*Account, error) {
 	groupID := due.GroupID
+	var selected *Account
+	var selectErr error
 	switch due.Platform {
 	case PlatformOpenAI:
 		if s.openAIGateway == nil {
 			return nil, fmt.Errorf("openai gateway service not configured")
 		}
-		return s.openAIGateway.SelectAccountForModel(ctx, &groupID, "", modelID)
+		selected, selectErr = s.openAIGateway.SelectAccountForModel(ctx, &groupID, "", modelID)
 	case PlatformGemini:
 		if s.geminiCompatSvc != nil {
-			return s.geminiCompatSvc.SelectAccountForModel(ctx, &groupID, "", modelID)
+			selected, selectErr = s.geminiCompatSvc.SelectAccountForModel(ctx, &groupID, "", modelID)
+			break
 		}
 		if s.gatewaySvc != nil {
-			return s.gatewaySvc.SelectAccountForModel(ctx, &groupID, "", modelID)
+			selected, selectErr = s.gatewaySvc.SelectAccountForModel(ctx, &groupID, "", modelID)
+			break
 		}
 		return nil, fmt.Errorf("gemini gateway service not configured")
 	default:
 		if s.gatewaySvc == nil {
 			return nil, fmt.Errorf("gateway service not configured")
 		}
-		return s.gatewaySvc.SelectAccountForModel(ctx, &groupID, "", modelID)
+		selected, selectErr = s.gatewaySvc.SelectAccountForModel(ctx, &groupID, "", modelID)
 	}
+	if selectErr == nil && selected != nil {
+		return selected, nil
+	}
+
+	// 探针是恢复入口：账号因瞬时限流、过载或模型冷却被移出热调度池时，
+	// 仍需从持久的 active/schedulable 候选中挑选账号复探，否则失败后永远不会真正发出新请求。
+	if s.accountTestSvc != nil && s.accountTestSvc.accountRepo != nil {
+		candidates, candidateErr := s.accountTestSvc.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, []string{due.Platform}, true)
+		if candidateErr == nil {
+			if candidate := selectProbeCandidate(candidates, modelID); candidate != nil {
+				return candidate, nil
+			}
+		}
+	}
+	if selectErr != nil {
+		return nil, selectErr
+	}
+	return nil, fmt.Errorf("no probe account available for model: %s", modelID)
+}
+
+// selectProbeCandidate 从忽略瞬时冷却的候选中选出第一个支持目标模型的账号。
+func selectProbeCandidate(candidates []Account, modelID string) *Account {
+	for i := range candidates {
+		if candidates[i].IsModelSupported(modelID) {
+			return &candidates[i]
+		}
+	}
+	return nil
 }

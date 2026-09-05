@@ -187,3 +187,15 @@ func TestRunGroupAvailabilityProbeAttemptsStopsAfterParentCancellation(t *testin
 		t.Fatalf("runGroupAvailabilityProbeAttempts() attempts = %d, want 1", attempts)
 	}
 }
+
+func TestSelectProbeCandidateIgnoresTransientCooldownState(t *testing.T) {
+	resetAt := time.Now().Add(time.Hour)
+	candidates := []Account{
+		{ID: 7, Name: "fastlyai", Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, RateLimitResetAt: &resetAt},
+	}
+
+	selected := selectProbeCandidate(candidates, "gpt-5.6-sol")
+	if selected == nil || selected.ID != 7 {
+		t.Fatalf("selectProbeCandidate() = %+v, want transiently cooled account", selected)
+	}
+}

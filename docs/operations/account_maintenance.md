@@ -42,6 +42,8 @@ Kimi、Zhipu、DeepSeek 的连接测试按账号 `api_protocol` 选择原生 Ant
 
 主动分组探针的文字请求只用于确认上游连通和首个有效响应，OpenAI Responses 与 Chat Completions 载荷均将输出上限限制为 16 个 token。这样可以避免兼容渠道按默认长输出额度预扣，把“余额不足以覆盖探针预扣”误报为供应商不可用；真实业务请求仍使用自身的输出预算。
 
+探针选账号时先复用正常调度；如果账号只是处于限流、过载或模型冷却等瞬时状态而被热调度池过滤，探针会从同分组持久的 active/schedulable 候选中复探。人工停用账号仍不会被探针唤回；候选确实不存在或模型不支持时才记录“无可用探针账号”。
+
 ## 额度与能力探测
 
 平台可维护独立的上游额度快照：OpenAI/Codex 窗口、Gemini tier/model quota、Antigravity credits、Grok 计费/媒体资格、Qoder Credits，以及 Kimi/Zhipu/DeepSeek 的统一用量监控快照等。快照用于调度、容量展示和诊断，不是 TokenRouter 用户余额或订阅账本。
