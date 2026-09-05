@@ -2,18 +2,25 @@ import { defineComponent, nextTick } from 'vue'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelMarketplaceView from '../ModelMarketplaceView.vue'
-import type { MarketplaceGroup, MarketplaceModelPricing } from '@/types'
+import type { Account, MarketplaceGroup, MarketplaceModelPricing } from '@/types'
 
 enableAutoUnmount(afterEach)
 
 const getMarketplaceModels = vi.hoisted(() => vi.fn())
 const getBusinessUsageStats = vi.hoisted(() => vi.fn())
 vi.mock('@/api/admin/usage', () => ({ getStats: getBusinessUsageStats, default: { getStats: getBusinessUsageStats } }))
+const listAccounts = vi.hoisted(() => vi.fn())
+const queryBatchUpstreamUsage = vi.hoisted(() => vi.fn())
+vi.mock('@/api/admin/accounts', () => ({
+  list: listAccounts,
+  queryBatchUpstreamUsage,
+  default: { list: listAccounts, queryBatchUpstreamUsage },
+}))
 const getMarketplaceRoutingHealth = vi.hoisted(() => vi.fn())
 const checkAuth = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
 const copyToClipboard = vi.hoisted(() => vi.fn())
-const authState = vi.hoisted(() => ({ isAuthenticated: true, isAdmin: false }))
+const authState = vi.hoisted(() => ({ isAuthenticated: true, isAdmin: false, userId: 7 }))
 
 vi.mock('@/api/marketplace', () => ({
   getMarketplaceModels,
@@ -31,6 +38,9 @@ vi.mock('@/stores', () => ({
     },
     get isAdmin() {
       return authState.isAdmin
+    },
+    get user() {
+      return { id: authState.userId }
     },
     checkAuth,
   }),
@@ -70,6 +80,15 @@ vi.mock('vue-i18n', async () => {
         }
         if (key === 'marketplace.maxDiscountOff') {
           return `marketplace.maxDiscountOff ${params?.percent || ''}`
+        }
+        if (key === 'marketplace.routingHealthUpstreamBalance') {
+          return `余额 ${params?.value || ''}`
+        }
+        if (key === 'marketplace.routingHealthUpstreamQuotaPercent') {
+          return `额度 ${params?.percent || ''}% 可用`
+        }
+        if (key === 'marketplace.routingHealthAccountMultiplier') {
+          return `账号倍率 ${params?.multiplier || ''}`
         }
 
         return key
@@ -228,6 +247,37 @@ function routingHealthFixture() {
   }
 }
 
+function upstreamAccount(overrides: Partial<Account> = {}): Account {
+  return {
+    id: 8,
+    name: 'input-air',
+    platform: 'openai',
+    type: 'apikey',
+    proxy_id: null,
+    concurrency: 1,
+    priority: 1,
+    rate_multiplier: 0.8,
+    status: 'active',
+    error_message: null,
+    last_used_at: null,
+    expires_at: null,
+    auto_pause_on_expired: false,
+    created_at: '2026-09-01T00:00:00Z',
+    updated_at: '2026-09-05T00:00:00Z',
+    group_ids: [1],
+    schedulable: true,
+    rate_limited_at: null,
+    rate_limit_reset_at: null,
+    overload_until: null,
+    temp_unschedulable_until: null,
+    temp_unschedulable_reason: null,
+    session_window_start: null,
+    session_window_end: null,
+    session_window_status: null,
+    ...overrides,
+  }
+}
+
 async function mountMarketplace() {
   const wrapper = mount(ModelMarketplaceView, {
     global: {
@@ -257,6 +307,7 @@ function visibleTooltips() {
 describe('ModelMarketplaceView', () => {
   beforeEach(() => {
     localStorage.clear()
+    sessionStorage.clear()
     authState.isAuthenticated = true
     authState.isAdmin = false
     getMarketplaceModels.mockReset()
@@ -264,6 +315,10 @@ describe('ModelMarketplaceView', () => {
     getMarketplaceRoutingHealth.mockReset()
     getBusinessUsageStats.mockReset()
     getBusinessUsageStats.mockResolvedValue({ total_requests: 2, total_input_tokens: 100, total_output_tokens: 40, total_cache_read_tokens: 300, total_cache_creation_tokens: 100 })
+    listAccounts.mockReset()
+    listAccounts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 500, pages: 1 })
+    queryBatchUpstreamUsage.mockReset()
+    queryBatchUpstreamUsage.mockResolvedValue({ usage: {}, errors: {} })
     checkAuth.mockClear()
     fetchPublicSettings.mockClear()
     copyToClipboard.mockClear()
@@ -288,7 +343,54 @@ describe('ModelMarketplaceView', () => {
   it('普通用户不查询或显示管理员业务用量', async () => {
     const wrapper = await mountMarketplace()
     expect(getBusinessUsageStats).not.toHaveBeenCalled()
+    expect(listAccounts).not.toHaveBeenCalled()
+    expect(queryBatchUpstreamUsage).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="group-business-usage"]').exists()).toBe(false)
+  })
+
+  it('管理员按分组映射上游额度和账号倍率，并在五分钟内复用结果', async () => {
+    vi.useFakeTimers()
+    authState.isAdmin = true
+    const fixture = marketplaceFixture()
+    fixture[0] = { ...fixture[0], name: 'input-air' }
+    getMarketplaceModels.mockResolvedValue(fixture)
+    getMarketplaceRoutingHealth.mockResolvedValue(routingHealthFixture())
+    listAccounts.mockResolvedValue({ items: [
+      upstreamAccount(),
+      upstreamAccount({ id: 9, name: 'disabled', group_ids: [2], extra: { upstream_usage_query: { enabled: false } } }),
+    ], total: 2, page: 1, page_size: 500, pages: 1 })
+    queryBatchUpstreamUsage.mockResolvedValue({
+      usage: {
+        '8': {
+          account_id: 8,
+          adapter: 'sub2api',
+          observed_at: '2026-09-05T09:00:00Z',
+          provider: 'sub2api',
+          mode: 'quota',
+          unit: 'USD',
+          balance: { remaining: 12.5 },
+          limits: [{ name: 'key_quota', used: 25, limit: 100, remaining: 75 }],
+        },
+      },
+      errors: {},
+    })
+
+    const wrapper = await mountMarketplace()
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    expect(queryBatchUpstreamUsage).toHaveBeenCalledTimes(1)
+    expect(queryBatchUpstreamUsage).toHaveBeenCalledWith([8])
+    const asset = wrapper.get('[data-testid="channel-upstream-asset"]')
+    expect(asset.text()).toContain('余额 $12.5')
+    expect(asset.text()).toContain('额度 75% 可用')
+    expect(asset.text()).toContain('账号倍率 x0.8')
+
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(queryBatchUpstreamUsage).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(300_000)
+    await flushPromises()
+    expect(queryBatchUpstreamUsage).toHaveBeenCalledTimes(2)
   })
 
   it('业务统计失败保留渠道主体，并明确显示用量不可用', async () => {

@@ -166,6 +166,7 @@
           v-if="isAdmin && routingHealth"
           :snapshot="routingHealth"
           :load-state="routingHealthLoadState"
+          :upstream-assets-by-group="upstreamAssetsByGroup"
         />
 
         <div v-if="loading" class="card px-6 py-14 text-center">
@@ -353,12 +354,14 @@ import SearchInput from '@/components/common/SearchInput.vue'
 import Select from '@/components/common/Select.vue'
 import ModelIdLabel from '@/components/common/ModelIdLabel.vue'
 import RoutingHealthOverview from '@/components/marketplace/RoutingHealthOverview.vue'
+import type { ChannelUpstreamAsset } from '@/components/marketplace/channelUpstreamAsset'
 import { useBalanceDisplay } from '@/composables/useBalanceDisplay'
 import { initTheme, useTheme } from '@/composables/useTheme'
 import { getMarketplaceModels, getMarketplaceRoutingHealth } from '@/api/marketplace'
+import { list as listAccounts, queryBatchUpstreamUsage } from '@/api/admin/accounts'
 import { providerBrandDisplayName, providerBrandFilterKey, resolveProviderBrand, resolveProviderBrandKey } from '@/utils/providerBrand'
 import { sanitizeUrl } from '@/utils/url'
-import type { MarketplaceGroup, MarketplaceModelPricing, MarketplacePricingInterval, MarketplaceRoutingHealthSnapshot } from '@/types'
+import type { Account, MarketplaceGroup, MarketplaceModelPricing, MarketplacePricingInterval, MarketplaceRoutingHealthSnapshot, UpstreamUsageQueryResult } from '@/types'
 import { useAppStore, useAuthStore } from '@/stores'
 
 type VisibleMarketplaceGroup = MarketplaceGroup
@@ -378,9 +381,13 @@ const authStore = useAuthStore()
 const { isDark, toggleTheme } = useTheme()
 
 const groups = ref<MarketplaceGroup[]>([])
+const upstreamAccounts = ref<Account[]>([])
+const upstreamUsageByAccountId = ref<Record<string, UpstreamUsageQueryResult | undefined>>({})
 const businessUsage = ref<Record<number, { stats?: AdminUsageStatsResponse; error?: boolean; updatedAt?: string }>>({})
 let businessUsageInFlight = false
 let businessUsageLastAttempt = 0
+let upstreamAssetsInFlight = false
+let upstreamAssetsLastAttempt = 0
 let disposed = false
 const routingHealth = ref<MarketplaceRoutingHealthSnapshot | null>(null)
 const loading = ref(true)
@@ -396,6 +403,9 @@ let routingHealthRequestInFlight = false
 let marketplaceRefreshTimer: ReturnType<typeof setInterval> | null = null
 type RoutingHealthLoadState = 'ready' | 'source_unavailable' | 'auth_required' | 'forbidden' | 'network_error' | 'unknown_error'
 const routingHealthLoadState = ref<RoutingHealthLoadState>('ready')
+const UPSTREAM_ASSET_REFRESH_MS = 5 * 60 * 1000
+const UPSTREAM_ASSET_BATCH_SIZE = 100
+const UPSTREAM_ASSET_CACHE_PREFIX = 'tokenrouter:admin:marketplace-upstream-assets:v1:'
 
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const isAdmin = computed(() => authStore.isAdmin)
@@ -403,6 +413,26 @@ const isAdmin = computed(() => authStore.isAdmin)
 const siteName = computed(() => appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))
+
+const upstreamAssetsByGroup = computed<Record<string, ChannelUpstreamAsset[]>>(() => {
+  const groupNames = new Map(groups.value.map(group => [group.id, group.name]))
+  const result: Record<string, ChannelUpstreamAsset[]> = {}
+  for (const account of upstreamAccounts.value) {
+    for (const groupId of account.group_ids ?? []) {
+      const groupName = groupNames.get(groupId)
+      if (!groupName) continue
+      const assets = result[groupName] ?? (result[groupName] = [])
+      assets.push({
+        accountId: account.id,
+        accountName: account.name,
+        rateMultiplier: account.rate_multiplier,
+        usage: upstreamUsageByAccountId.value[String(account.id)],
+      })
+    }
+  }
+  for (const assets of Object.values(result)) assets.sort((left, right) => left.accountId - right.accountId)
+  return result
+})
 
 const normalizedSearch = computed(() => search.value.trim().toLowerCase())
 const activeFilterCount = computed(() => [
@@ -923,9 +953,118 @@ async function loadBusinessUsage() {
   }
 }
 
+function isQueryableUpstreamAccount(account: Account): boolean {
+  if (account.type !== 'apikey') return false
+  if (account.platform === 'zhipu' && account.credentials?.account_mode !== 'coding') return false
+  const config = account.extra?.upstream_usage_query as Record<string, unknown> | undefined
+  return config?.enabled !== false
+}
+
+function isMarketplaceDocumentHidden(): boolean {
+  return document.visibilityState === 'hidden'
+}
+
+function upstreamAssetCacheKey(account: Account): string | null {
+  const adminId = authStore.user?.id
+  if (typeof adminId !== 'number' || !Number.isSafeInteger(adminId) || adminId <= 0) return null
+  return `${UPSTREAM_ASSET_CACHE_PREFIX}${adminId}:${account.id}:${encodeURIComponent(account.updated_at || '')}`
+}
+
+function readUpstreamAssetCache(account: Account): UpstreamUsageQueryResult | null {
+  const key = upstreamAssetCacheKey(account)
+  if (!key) return null
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { data?: UpstreamUsageQueryResult; ts?: number }
+    const valid = parsed.data && parsed.data.account_id === account.id &&
+      typeof parsed.data.observed_at === 'string' && Number.isFinite(Date.parse(parsed.data.observed_at)) &&
+      typeof parsed.ts === 'number' && Number.isFinite(parsed.ts) &&
+      parsed.ts <= Date.now() + 60_000 && Date.now() - parsed.ts < UPSTREAM_ASSET_REFRESH_MS
+    if (!valid) {
+      sessionStorage.removeItem(key)
+      return null
+    }
+    return parsed.data!
+  } catch {
+    try { sessionStorage.removeItem(key) } catch { /* session storage may be unavailable */ }
+    return null
+  }
+}
+
+function writeUpstreamAssetCache(account: Account, usage: UpstreamUsageQueryResult): void {
+  const key = upstreamAssetCacheKey(account)
+  if (!key || usage.account_id !== account.id) return
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ data: usage, ts: Date.now() }))
+  } catch {
+    // The current page can still use the in-memory result when storage is unavailable.
+  }
+}
+
+async function listAllAccounts(): Promise<Account[]> {
+  const accounts: Account[] = []
+  let page = 1
+  let pages = 1
+  do {
+    const response = await listAccounts(page, 500)
+    accounts.push(...response.items)
+    pages = Math.max(response.pages || 1, 1)
+    page += 1
+  } while (page <= pages)
+  return accounts
+}
+
+async function loadUpstreamAssets(): Promise<void> {
+  if (disposed || !isAdmin.value || isMarketplaceDocumentHidden() || upstreamAssetsInFlight ||
+    Date.now() - upstreamAssetsLastAttempt < UPSTREAM_ASSET_REFRESH_MS) return
+
+  upstreamAssetsInFlight = true
+  upstreamAssetsLastAttempt = Date.now()
+  try {
+    const accounts = await listAllAccounts()
+    if (disposed || !isAdmin.value) return
+    upstreamAccounts.value = accounts
+
+    const pending: Account[] = []
+    const nextUsage = { ...upstreamUsageByAccountId.value }
+    for (const account of accounts.filter(isQueryableUpstreamAccount)) {
+      const cached = readUpstreamAssetCache(account)
+      if (cached) nextUsage[String(account.id)] = cached
+      else pending.push(account)
+    }
+    upstreamUsageByAccountId.value = nextUsage
+
+    for (let index = 0; index < pending.length; index += UPSTREAM_ASSET_BATCH_SIZE) {
+      if (disposed || !isAdmin.value || isMarketplaceDocumentHidden()) break
+      const chunk = pending.slice(index, index + UPSTREAM_ASSET_BATCH_SIZE)
+      try {
+        const response = await queryBatchUpstreamUsage(chunk.map(account => account.id))
+        const merged = { ...upstreamUsageByAccountId.value }
+        for (const account of chunk) {
+          const usage = response.usage[String(account.id)]
+          if (!usage || usage.account_id !== account.id) continue
+          merged[String(account.id)] = usage
+          writeUpstreamAssetCache(account, usage)
+        }
+        if (!disposed && isAdmin.value) upstreamUsageByAccountId.value = merged
+      } catch {
+        // Keep the previous successful values; unsupported and failed accounts stay unobtrusive.
+      }
+    }
+  } catch {
+    // Upstream assets are supplementary and must not block the marketplace or health snapshot.
+  } finally {
+    upstreamAssetsInFlight = false
+  }
+}
+
 function refreshMarketplaceSilently() {
   if (disposed) return
-  void loadMarketplace(true).then(loadBusinessUsage)
+  void loadMarketplace(true).then(() => {
+    void loadBusinessUsage()
+    void loadUpstreamAssets()
+  })
   void loadRoutingHealth()
 }
 
@@ -944,6 +1083,7 @@ onMounted(async () => {
   }
   await fetchMarketplace()
   void loadBusinessUsage()
+  void loadUpstreamAssets()
   await loadRoutingHealth()
   if (disposed) return
   marketplaceRefreshTimer = setInterval(refreshMarketplaceSilently, 30_000)
