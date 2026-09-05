@@ -718,8 +718,17 @@ export interface MarketplaceRoutingHealthSnapshot {
   routingChainId?: string
   currentHit?: {
     supplierName: string
+    groupName?: string | null
     model: string
     observedAt?: string | null
+  } | null
+  lastSwitch?: {
+    from: string
+    to: string
+    reason: string
+    model: string
+    observedAt?: string | null
+    durationMs?: number | null
   } | null
   providers: MarketplaceRoutingHealthProvider[]
 }
@@ -727,6 +736,7 @@ export interface MarketplaceRoutingHealthSnapshot {
 export interface MarketplaceRoutingHealthProvider {
   currentStatus?: string
   probeStatus?: string
+  preferredModel?: string | null
   supplierName: string
   names: {
     group: string

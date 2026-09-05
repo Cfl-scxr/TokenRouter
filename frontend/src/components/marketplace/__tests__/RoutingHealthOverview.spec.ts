@@ -56,6 +56,19 @@ function provider(index: number, healthLevel = 'healthy'): MarketplaceRoutingHea
 }
 
 describe('RoutingHealthOverview', () => {
+  it('同供应商只标记真实命中分组，并展示脱敏换路原因', () => {
+    const channels = [provider(1), provider(2)]
+    channels.forEach((item) => { item.supplierName = 'Input' })
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot: {
+      available: true, schemaVersion: 1, state: 'observed', providers: channels,
+      currentHit: { supplierName: 'Input', groupName: 'channel-2', model: 'gpt-5.6-sol' },
+      lastSwitch: { from: 'PQ', to: 'channel-2', reason: 'timeout', model: 'gpt-5.6-sol', durationMs: 15020 },
+    } } })
+    expect(wrapper.findAll('[data-recent-hit="true"]')).toHaveLength(1)
+    expect(wrapper.get('[data-recent-hit="true"]').text()).toContain('channel-2')
+    expect(wrapper.get('[data-testid="routing-last-switch"]').text()).toContain('15.02 s')
+    expect(wrapper.get('[data-testid="routing-last-switch"]').text()).toContain('marketplace.routingSwitchReasons.timeout')
+  })
   it('统一状态优先于旧健康等级，分数可视化不改变长期分', () => {
     const channel = provider(1)
     channel.currentStatus = 'interrupted'

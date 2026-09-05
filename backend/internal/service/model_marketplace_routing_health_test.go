@@ -16,6 +16,8 @@ func TestModelMarketplaceServiceGetRoutingHealthSnapshot(t *testing.T) {
   "state": "observed",
   "observedAt": "2026-09-04T12:39:31.675Z",
   "routingChainId": "tokenrouter-primary",
+  "currentHit": {"supplierName":"Input","groupName":"input-plus","model":"gpt-5.6-sol"},
+  "lastSwitch": {"from":"PQ","to":"input-plus","reason":"timeout","model":"gpt-5.6-sol","durationMs":15020},
   "providers": [{
     "supplierName": "FastLYAI",
     "names": {"group": "fastlyai", "account": "fastlyai", "key": "fastlyai"},
@@ -39,6 +41,9 @@ func TestModelMarketplaceServiceGetRoutingHealthSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, snapshot.Available)
 	require.Equal(t, "tokenrouter-primary", snapshot.RoutingChainID)
+	require.Equal(t, "input-plus", snapshot.CurrentHit.GroupName)
+	require.Equal(t, "timeout", snapshot.LastSwitch.Reason)
+	require.EqualValues(t, 15020, *snapshot.LastSwitch.DurationMs)
 	require.Len(t, snapshot.Providers, 1)
 	require.Equal(t, "fastlyai", snapshot.Providers[0].Names.Group)
 	require.Equal(t, "slow", snapshot.Providers[0].CurrentStatus)

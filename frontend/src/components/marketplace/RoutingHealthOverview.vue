@@ -16,6 +16,10 @@
         <p class="mt-2 break-words text-xs font-medium text-teal-700 dark:text-teal-300">
           {{ currentHitLabel }}
         </p>
+        <p v-if="snapshot.lastSwitch" class="mt-1 break-words text-xs text-gray-600 dark:text-dark-300" data-testid="routing-last-switch">
+          {{ t('marketplace.routingHealthLastSwitch') }}: {{ snapshot.lastSwitch.from }} → {{ snapshot.lastSwitch.to }} · {{ switchReason(snapshot.lastSwitch.reason) }} · {{ formatDateTime(snapshot.lastSwitch.observedAt) }}
+          <span v-if="snapshot.lastSwitch.durationMs != null"> · {{ t('marketplace.routingHealthSwitchWait') }} {{ (snapshot.lastSwitch.durationMs / 1000).toFixed(2) }} s</span>
+        </p>
       </div>
       <div v-if="snapshot.available" class="grid shrink-0 grid-cols-4 gap-4 text-xs">
         <div class="text-emerald-700 dark:text-emerald-300"><strong class="block text-xl tabular-nums">{{ counts.healthy }}</strong>{{ t('marketplace.routingHealthHealthy') }}</div>
@@ -61,12 +65,13 @@
             <td class="px-4 py-2.5">
               <div class="break-words font-semibold text-gray-950 dark:text-white">{{ provider.names.group }}</div>
               <div class="break-words text-[11px] text-gray-500 dark:text-dark-400">{{ provider.supplierName }}</div>
+              <span v-if="provider.preferredModel" class="mt-1 block text-[11px] font-semibold text-emerald-700 dark:text-emerald-300" :title="provider.preferredModel">{{ t('marketplace.routingHealthPreferred') }}</span>
               <span v-if="isRecentHit(provider)" class="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-teal-700 dark:text-teal-300" :title="formatDateTime(snapshot.currentHit?.observedAt)">
                 <span class="h-1 w-1 rounded-full bg-teal-500" />{{ t('marketplace.routingHealthRecentHit') }}
               </span>
             </td>
             <td class="px-3 py-2.5" :data-label="t('marketplace.probeCurrentStatus')">
-              <span class="inline-flex items-center gap-1.5 rounded px-2 py-1 font-semibold ring-1 ring-inset ring-current/10" :class="healthTextClass(currentStatusKey(provider))" :title="healthStatusHint(provider)">
+              <span class="inline-flex items-center gap-1.5 rounded px-2 py-1 font-semibold ring-1 ring-inset ring-gray-200 dark:ring-dark-700" :class="healthTextClass(currentStatusKey(provider))" :title="healthStatusHint(provider)">
                 <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="healthDotClass(currentStatusKey(provider))" />
                 {{ healthLabel(currentStatusKey(provider)) }}
               </span>
@@ -111,8 +116,15 @@ const sortedProviders = computed(() => [...props.snapshot.providers].sort((left,
 ))
 
 function isRecentHit(provider: MarketplaceRoutingHealthProvider): boolean {
+  if (props.snapshot.currentHit?.groupName) return props.snapshot.currentHit.groupName === provider.names.group
   return Boolean(props.snapshot.currentHit?.supplierName)
     && props.snapshot.currentHit?.supplierName === provider.supplierName
+    && props.snapshot.providers.filter((item) => item.supplierName === provider.supplierName).length === 1
+}
+
+function switchReason(reason: string): string {
+  const known = ['timeout', 'upstream_unavailable', 'rate_limited', 'quota_exhausted', 'authentication_failed', 'health_priority_changed', 'stream_interrupted']
+  return t(`marketplace.routingSwitchReasons.${known.includes(reason) ? reason : 'other'}`)
 }
 
 function scoreWidth(score: number): number {
@@ -146,7 +158,7 @@ const counts = computed(() => {
 const currentHitLabel = computed(() => {
   const hit = props.snapshot.currentHit
   if (!hit?.supplierName) return t('marketplace.routingHealthNoCurrentHit')
-  return t('marketplace.routingHealthCurrentHit', { supplier: hit.supplierName, model: hit.model || '-' })
+  return t('marketplace.routingHealthCurrentHit', { supplier: hit.groupName || hit.supplierName, model: hit.model || '-' })
 })
 
 function currentStatusKey(provider: MarketplaceRoutingHealthProvider): string {
@@ -170,7 +182,7 @@ function healthLabel(level: string): string {
   const labels: Record<string, string> = {
     slow: t('marketplace.probeStatusSlow'),
     interrupted: t('marketplace.probeStatusInterrupted'),
-    healthy: t('marketplace.routingHealthHealthy'),
+    healthy: t('marketplace.probeStatusAvailable'),
     degraded: t('marketplace.routingHealthDegraded'),
     recovering: t('marketplace.routingHealthRecovering'),
     unavailable: t('marketplace.routingHealthUnavailable'),
@@ -246,7 +258,7 @@ function formatProbeSuccess24h(provider: MarketplaceRoutingHealthProvider): stri
 }
 
 function formatLatency(provider: MarketplaceRoutingHealthProvider): string {
-  const latency = provider.health.lastLatencyMs ?? provider.scheduledTest?.latencyMs
+  const latency = provider.currentStatus ? provider.health.lastLatencyMs : provider.health.lastLatencyMs ?? provider.scheduledTest?.latencyMs
   if (typeof latency !== 'number' || latency < 0) return '-'
   return latency >= 1000 ? `${(latency / 1000).toFixed(2)} s` : `${Math.round(latency)} ms`
 }

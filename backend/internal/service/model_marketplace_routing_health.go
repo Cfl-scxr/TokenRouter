@@ -24,13 +24,25 @@ type MarketplaceRoutingHealthSnapshot struct {
 	ObservedAt     *time.Time                          `json:"observedAt"`
 	RoutingChainID string                              `json:"routingChainId"`
 	CurrentHit     *MarketplaceRoutingHealthCurrentHit `json:"currentHit,omitempty"`
+	LastSwitch     *MarketplaceRoutingHealthSwitch     `json:"lastSwitch,omitempty"`
 	Providers      []MarketplaceRoutingHealthProvider  `json:"providers"`
 }
 
 type MarketplaceRoutingHealthCurrentHit struct {
 	SupplierName string     `json:"supplierName"`
+	GroupName    string     `json:"groupName,omitempty"`
 	Model        string     `json:"model"`
 	ObservedAt   *time.Time `json:"observedAt"`
+}
+
+// MarketplaceRoutingHealthSwitch 仅公开已完成换路的脱敏摘要。
+type MarketplaceRoutingHealthSwitch struct {
+	From       string     `json:"from"`
+	To         string     `json:"to"`
+	Reason     string     `json:"reason"`
+	Model      string     `json:"model"`
+	ObservedAt *time.Time `json:"observedAt"`
+	DurationMs *float64   `json:"durationMs"`
 }
 
 type MarketplaceRoutingHealthProvider struct {
@@ -43,6 +55,7 @@ type MarketplaceRoutingHealthProvider struct {
 	HealthScore       *float64                                   `json:"healthScore"`
 	CurrentStatus     string                                     `json:"currentStatus,omitempty"`
 	ProbeStatus       string                                     `json:"probeStatus,omitempty"`
+	PreferredModel    string                                     `json:"preferredModel,omitempty"`
 	Business          MarketplaceRoutingHealthBusiness           `json:"business"`
 	Health            MarketplaceRoutingHealthDetail             `json:"health"`
 	ScheduledTest     *MarketplaceRoutingHealthScheduledTest     `json:"scheduledTest,omitempty"`
