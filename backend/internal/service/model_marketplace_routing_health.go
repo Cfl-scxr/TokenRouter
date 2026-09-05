@@ -41,6 +41,8 @@ type MarketplaceRoutingHealthProvider struct {
 	RouteState        string                                     `json:"routeState"`
 	HealthLevel       string                                     `json:"healthLevel"`
 	HealthScore       *float64                                   `json:"healthScore"`
+	CurrentStatus     string                                     `json:"currentStatus,omitempty"`
+	ProbeStatus       string                                     `json:"probeStatus,omitempty"`
 	Business          MarketplaceRoutingHealthBusiness           `json:"business"`
 	Health            MarketplaceRoutingHealthDetail             `json:"health"`
 	ScheduledTest     *MarketplaceRoutingHealthScheduledTest     `json:"scheduledTest,omitempty"`

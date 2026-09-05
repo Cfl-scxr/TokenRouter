@@ -725,6 +725,8 @@ export interface MarketplaceRoutingHealthSnapshot {
 }
 
 export interface MarketplaceRoutingHealthProvider {
+  currentStatus?: string
+  probeStatus?: string
   supplierName: string
   names: {
     group: string

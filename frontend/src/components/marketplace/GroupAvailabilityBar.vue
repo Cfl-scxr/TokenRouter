@@ -1,7 +1,7 @@
 <template>
-  <div class="w-full min-w-0 space-y-2" :title="tooltip">
-    <div class="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+  <div class="probe-overview w-full min-w-0 space-y-3">
+    <div class="probe-fields grid grid-cols-2 gap-x-4 gap-y-3 border-b border-gray-100 pb-3 dark:border-dark-700">
+      <div class="min-w-0">
         <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
           {{ t('marketplace.probeCurrentStatus') }}
         </div>
@@ -14,27 +14,27 @@
           {{ statusLabel }}
         </div>
       </div>
-      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+      <div class="min-w-0">
         <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
           {{ t('marketplace.probeLastCheckedAt') }}
         </div>
-        <div class="mt-0.5 truncate text-xs font-semibold text-gray-800 dark:text-dark-100" data-testid="probe-last-checked-at">
+        <div class="mt-0.5 break-words text-xs font-semibold text-gray-800 dark:text-dark-100" :title="lastCheckedAbsolute" data-testid="probe-last-checked-at">
           {{ lastCheckedLabel }}
         </div>
       </div>
-      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+      <div class="min-w-0">
         <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
           {{ t('marketplace.probeCurrentLatency') }}
         </div>
-        <div class="mt-0.5 text-xs font-semibold text-gray-800 dark:text-dark-100" data-testid="probe-current-latency">
+        <div class="mt-0.5 text-xs font-semibold tabular-nums" :class="isSlowResponse ? 'text-amber-700 dark:text-amber-300' : 'text-gray-800 dark:text-dark-100'" data-testid="probe-current-latency">
           {{ latencyLabel }}
         </div>
       </div>
-      <div class="rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-800/70">
+      <div class="min-w-0">
         <div class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">
           {{ t('marketplace.probeConsecutiveFailures') }}
         </div>
-        <div class="mt-0.5 text-xs font-semibold text-gray-800 dark:text-dark-100" data-testid="probe-consecutive-failures">
+        <div class="mt-0.5 text-xs font-semibold tabular-nums" :class="Number(consecutiveFailuresLabel) >= 2 ? 'text-rose-700 dark:text-rose-300' : Number(consecutiveFailuresLabel) > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'" data-testid="probe-consecutive-failures">
           {{ consecutiveFailuresLabel }}
         </div>
       </div>
@@ -56,9 +56,10 @@
             bucketClass(bucket.availability_rate, bucket.total_count),
           ]"
           :style="{ width: bucketWidth }"
+          :title="bucketTitle(bucket)"
         />
       </div>
-      <div class="w-[96px] shrink-0 text-left">
+      <div class="w-[76px] shrink-0 text-right" :title="tooltip">
         <div class="text-sm font-semibold leading-5 text-gray-900 dark:text-white">
           {{ rateLabel }}
         </div>
@@ -72,14 +73,17 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useNow } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { MarketplaceGroupAvailability, MarketplaceGroupAvailabilityDay } from '@/types'
 
 const props = defineProps<{
   availability?: MarketplaceGroupAvailability | null
+  currentStatus?: string
 }>()
 
 const { t, locale } = useI18n()
+const now = useNow({ interval: 30_000 })
 const slowResponseThresholdMs = 8_000
 
 const windowDays = computed(() => Math.max(props.availability?.window_days ?? 1, 1))
@@ -145,6 +149,8 @@ const isSlowResponse = computed(() =>
   && props.availability.last_latency_ms > slowResponseThresholdMs,
 )
 const statusLabel = computed(() => {
+  const labels: Record<string, string> = { available: 'probeStatusAvailable', slow: 'probeStatusSlow', fluctuating: 'routingHealthDegraded', interrupted: 'probeStatusInterrupted', recovering: 'routingHealthRecovering', unknown: 'probeStatusUnknown', manual_disabled: 'routingHealthManualDisabled' }
+  if (props.currentStatus && labels[props.currentStatus]) return t(`marketplace.${labels[props.currentStatus]}`)
   if (isSlowResponse.value) {
     return t('marketplace.probeStatusSlow')
   }
@@ -157,6 +163,7 @@ const statusLabel = computed(() => {
   return t('marketplace.probeStatusUnknown')
 })
 const statusTextClass = computed(() => {
+  if (props.currentStatus) return props.currentStatus === 'available' ? 'text-emerald-700 dark:text-emerald-300' : props.currentStatus === 'interrupted' ? 'text-rose-700 dark:text-rose-300' : ['slow', 'fluctuating', 'recovering'].includes(props.currentStatus) ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-dark-300'
   if (isSlowResponse.value) {
     return 'text-amber-700 dark:text-amber-300'
   }
@@ -169,6 +176,7 @@ const statusTextClass = computed(() => {
   return 'text-gray-600 dark:text-dark-300'
 })
 const statusDotClass = computed(() => {
+  if (props.currentStatus) return props.currentStatus === 'available' ? 'bg-emerald-500' : props.currentStatus === 'interrupted' ? 'bg-rose-500' : ['slow', 'fluctuating', 'recovering'].includes(props.currentStatus) ? 'bg-amber-400' : 'bg-gray-400'
   if (isSlowResponse.value) {
     return 'bg-amber-400'
   }
@@ -180,7 +188,7 @@ const statusDotClass = computed(() => {
   }
   return 'bg-gray-400 dark:bg-dark-500'
 })
-const lastCheckedLabel = computed(() => {
+const lastCheckedAbsolute = computed(() => {
   const raw = props.availability?.last_checked_at
   if (!raw) {
     return t('marketplace.probeNoData')
@@ -196,6 +204,17 @@ const lastCheckedLabel = computed(() => {
     minute: '2-digit',
     hour12: false,
   })
+})
+// 相对时间随页面存活更新，不触发任何供应商探测。
+const lastCheckedLabel = computed(() => {
+  const timestamp = Date.parse(props.availability?.last_checked_at ?? '')
+  if (!Number.isFinite(timestamp)) return t('marketplace.probeNoData')
+  const seconds = Math.round((timestamp - now.value.getTime()) / 1000)
+  const formatter = new Intl.RelativeTimeFormat(locale.value, { numeric: 'auto' })
+  if (Math.abs(seconds) < 60) return formatter.format(0, 'second')
+  if (Math.abs(seconds) < 3600) return formatter.format(Math.round(seconds / 60), 'minute')
+  if (Math.abs(seconds) < 86400) return formatter.format(Math.round(seconds / 3600), 'hour')
+  return formatter.format(Math.round(seconds / 86400), 'day')
 })
 const latencyLabel = computed(() => {
   const latency = props.availability?.last_latency_ms
@@ -245,4 +264,15 @@ function bucketClass(rate?: number | null, totalCount?: number): string {
   }
   return 'bg-rose-400'
 }
+function bucketTitle(bucket: MarketplaceGroupAvailabilityDay): string {
+  if (!bucket.total_count || bucket.availability_rate == null) return `${bucket.date || ''} ${t('marketplace.availabilityNoData')}`.trim()
+  return `${bucket.date} | ${(bucket.availability_rate * 100).toFixed(1)}% | ${bucket.success_count}/${bucket.total_count}`
+}
 </script>
+
+<style scoped>
+.probe-overview { container-type: inline-size; }
+@container (min-width: 440px) {
+  .probe-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+</style>

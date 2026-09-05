@@ -35,6 +35,8 @@ marketplace: {
     availabilityHintNoData: 'No active probe data in the last {hours} hours',
     probeCurrentStatus: 'Current status',
     probeLastCheckedAt: 'Last probe',
+    probeStatusInterrupted: 'Interrupted',
+    routingHealthRecentHit: 'Latest hit',
     probeCurrentLatency: 'Current latency',
     probeConsecutiveFailures: 'Consecutive failures',
     probeStatusAvailable: 'Available',

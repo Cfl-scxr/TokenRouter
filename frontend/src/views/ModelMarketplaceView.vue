@@ -281,6 +281,7 @@
                 <!-- 用户侧只展示可用率，并利用释放出的空间将状态条靠右放置。 -->
                 <GroupAvailabilityBar
                   :availability="group.availability"
+                  :current-status="routingHealth?.available ? routingHealth.providers.find(provider => provider.names.group === group.name)?.probeStatus : undefined"
                   class="min-w-0"
                 />
               </div>

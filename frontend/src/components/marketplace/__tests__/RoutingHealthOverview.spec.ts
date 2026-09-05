@@ -56,6 +56,14 @@ function provider(index: number, healthLevel = 'healthy'): MarketplaceRoutingHea
 }
 
 describe('RoutingHealthOverview', () => {
+  it('统一状态优先于旧健康等级，分数可视化不改变长期分', () => {
+    const channel = provider(1)
+    channel.currentStatus = 'interrupted'
+    channel.healthScore = 81
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot: { available: true, schemaVersion: 1, state: 'observed', providers: [channel] } } })
+    expect(wrapper.text()).toContain('marketplace.probeStatusInterrupted')
+    expect(wrapper.get('[role="meter"]').attributes('aria-valuenow')).toBe('81')
+  })
   it('展示全部九家渠道并区分人工停用和业务健康字段', () => {
     const snapshot: MarketplaceRoutingHealthSnapshot = {
       available: true,

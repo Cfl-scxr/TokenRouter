@@ -35,6 +35,8 @@ marketplace: {
     availabilityHintNoData: '近 {hours} 小时暂无主动探测数据',
     probeCurrentStatus: '当前状态',
     probeLastCheckedAt: '最后探测',
+    probeStatusInterrupted: '中断',
+    routingHealthRecentHit: '最近命中',
     probeCurrentLatency: '当前延迟',
     probeConsecutiveFailures: '连续失败',
     probeStatusAvailable: '可调用',
