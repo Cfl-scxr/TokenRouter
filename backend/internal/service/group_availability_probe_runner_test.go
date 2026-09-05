@@ -199,3 +199,11 @@ func TestSelectProbeCandidateIgnoresTransientCooldownState(t *testing.T) {
 		t.Fatalf("selectProbeCandidate() = %+v, want transiently cooled account", selected)
 	}
 }
+
+func TestSelectProbeCandidateUsesSingleCandidateWhenModelSnapshotIsStale(t *testing.T) {
+	candidates := []Account{{ID: 7, Name: "fastlyai", Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}}
+	selected := selectProbeCandidate(candidates, "model-not-in-stale-whitelist")
+	if selected == nil || selected.ID != 7 {
+		t.Fatalf("selectProbeCandidate() = %+v, want single candidate fallback", selected)
+	}
+}

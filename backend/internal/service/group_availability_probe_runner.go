@@ -357,5 +357,10 @@ func selectProbeCandidate(candidates []Account, modelID string) *Account {
 			return &candidates[i]
 		}
 	}
+	// 单账号分组仍允许发出探测，让上游返回真实的模型能力/余额错误，
+	// 避免本地模型白名单快照陈旧时形成“未调用”的假失败。
+	if len(candidates) == 1 {
+		return &candidates[0]
+	}
 	return nil
 }
