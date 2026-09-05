@@ -274,16 +274,18 @@
                 </div>
               </div>
               <div
-                v-if="group.availability"
+                v-if="group.availability || isAdmin"
                 class="w-full xl:ml-6 xl:w-[560px] xl:shrink-0"
                 data-testid="marketplace-group-availability"
               >
                 <!-- 用户侧只展示可用率，并利用释放出的空间将状态条靠右放置。 -->
                 <GroupAvailabilityBar
+                  v-if="group.availability"
                   :availability="group.availability"
                   :current-status="routingHealth?.available ? routingHealth.providers.find(provider => provider.names.group === group.name)?.probeStatus : undefined"
                   class="min-w-0"
                 />
+                <GroupBusinessUsage v-if="isAdmin" v-bind="businessUsage[group.id] || {}" />
               </div>
             </div>
 
@@ -340,6 +342,8 @@ import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import GroupAvailabilityBar from '@/components/marketplace/GroupAvailabilityBar.vue'
+import GroupBusinessUsage from '@/components/marketplace/GroupBusinessUsage.vue'
+import { getStats as getBusinessUsageStats, type AdminUsageStatsResponse } from '@/api/admin/usage'
 import ModelCapabilityTags from '@/components/marketplace/ModelCapabilityTags.vue'
 import ModelPricingPanel from '@/components/marketplace/ModelPricingPanel.vue'
 import ModelIcon from '@/components/common/ModelIcon.vue'
@@ -374,6 +378,10 @@ const authStore = useAuthStore()
 const { isDark, toggleTheme } = useTheme()
 
 const groups = ref<MarketplaceGroup[]>([])
+const businessUsage = ref<Record<number, { stats?: AdminUsageStatsResponse; error?: boolean; updatedAt?: string }>>({})
+let businessUsageInFlight = false
+let businessUsageLastAttempt = 0
+let disposed = false
 const routingHealth = ref<MarketplaceRoutingHealthSnapshot | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
@@ -890,8 +898,34 @@ async function loadRoutingHealth() {
   }
 }
 
+async function loadBusinessUsage() {
+  if (disposed || !isAdmin.value || document.visibilityState === 'hidden' || businessUsageInFlight || Date.now() - businessUsageLastAttempt < 60_000 || !groups.value.length) return
+  businessUsageInFlight = true
+  businessUsageLastAttempt = Date.now()
+  const end = new Date()
+  const start = new Date(end.getTime() - 86_400_000)
+  const pending = groups.value.map(group => group.id)
+  // 复用业务统计接口，限制并发且不触发任何上游探测。
+  try {
+    await Promise.all(Array.from({ length: Math.min(3, pending.length) }, async () => {
+      while (pending.length && !disposed && isAdmin.value && document.visibilityState !== 'hidden') {
+        const id = pending.shift()!
+        try {
+          const stats = await getBusinessUsageStats({ group_id: id, start_date: start.toISOString(), end_date: end.toISOString() })
+          if (!disposed && isAdmin.value) businessUsage.value[id] = { stats, updatedAt: end.toISOString() }
+        } catch {
+          if (!disposed && isAdmin.value) businessUsage.value[id] = { ...businessUsage.value[id], error: true }
+        }
+      }
+    }))
+  } finally {
+    businessUsageInFlight = false
+  }
+}
+
 function refreshMarketplaceSilently() {
-  void loadMarketplace(true)
+  if (disposed) return
+  void loadMarketplace(true).then(loadBusinessUsage)
   void loadRoutingHealth()
 }
 
@@ -909,13 +943,16 @@ onMounted(async () => {
     await appStore.fetchPublicSettings()
   }
   await fetchMarketplace()
+  void loadBusinessUsage()
   await loadRoutingHealth()
+  if (disposed) return
   marketplaceRefreshTimer = setInterval(refreshMarketplaceSilently, 30_000)
   document.addEventListener('visibilitychange', handleMarketplaceVisibilityChange)
   window.addEventListener('focus', refreshMarketplaceSilently)
 })
 
 onUnmounted(() => {
+  disposed = true
   document.removeEventListener('click', handleFilterClickOutside)
   document.removeEventListener('visibilitychange', handleMarketplaceVisibilityChange)
   window.removeEventListener('focus', refreshMarketplaceSilently)

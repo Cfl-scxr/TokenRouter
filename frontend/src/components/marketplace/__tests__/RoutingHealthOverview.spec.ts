@@ -56,6 +56,22 @@ function provider(index: number, healthLevel = 'healthy'): MarketplaceRoutingHea
 }
 
 describe('RoutingHealthOverview', () => {
+  it('健康分圆环保留居中分数，并区分零分和未知', () => {
+    const zero = provider(1)
+    zero.healthScore = 0
+    const unknown = provider(2)
+    unknown.healthScore = null
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot: {
+      available: true, schemaVersion: 1, state: 'observed', providers: [zero, unknown],
+    } } })
+    const meter = wrapper.get('[role="meter"]')
+    expect(meter.attributes('aria-valuenow')).toBe('0')
+    expect(meter.text()).toBe('0')
+    expect(meter.findAll('circle')).toHaveLength(2)
+    expect(wrapper.findAll('[role="meter"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="routing-health-provider"]')[1].findAll('td')[2].text()).toBe('-')
+  })
+
   it('同供应商只标记真实命中分组，并展示脱敏换路原因', () => {
     const channels = [provider(1), provider(2)]
     channels.forEach((item) => { item.supplierName = 'Input' })

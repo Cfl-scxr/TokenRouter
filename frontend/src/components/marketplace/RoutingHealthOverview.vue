@@ -77,9 +77,12 @@
               </span>
             </td>
             <td class="px-3 py-2.5 font-semibold tabular-nums" :data-label="t('marketplace.routingHealthScore')" :title="scoreHint(provider)">
-              <span class="text-sm">{{ formatScore(provider.healthScore) }}</span>
-              <div v-if="typeof provider.healthScore === 'number'" class="mt-1.5 h-1 w-full max-w-[80px] overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700" role="meter" :aria-label="t('marketplace.routingHealthScore')" :aria-valuenow="scoreWidth(provider.healthScore)" aria-valuemin="0" aria-valuemax="100">
-                <div class="h-full rounded-full bg-teal-500" :style="{ width: `${scoreWidth(provider.healthScore)}%` }" />
+              <div class="relative grid h-12 w-12 place-items-center" :role="provider.healthScore != null ? 'meter' : undefined" :aria-label="t('marketplace.routingHealthScore')" :aria-valuenow="provider.healthScore != null ? scoreWidth(provider.healthScore) : undefined" aria-valuemin="0" aria-valuemax="100">
+                <svg class="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 48 48" aria-hidden="true">
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="4" class="text-gray-100 dark:text-dark-700" />
+                  <circle v-if="provider.healthScore != null" cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="4" pathLength="100" :stroke-dasharray="`${scoreWidth(provider.healthScore)} 100`" :class="provider.healthScore >= 80 ? 'text-teal-500' : provider.healthScore > 0 ? 'text-amber-500' : 'text-rose-500'" />
+                </svg>
+                <span class="relative text-sm">{{ formatScore(provider.healthScore) }}</span>
               </div>
             </td>
             <td class="px-3 py-2.5 tabular-nums" :data-label="t('marketplace.routingHealthProbe24h')">{{ formatProbeSuccess24h(provider) }}</td>

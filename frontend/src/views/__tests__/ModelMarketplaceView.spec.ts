@@ -7,6 +7,8 @@ import type { MarketplaceGroup, MarketplaceModelPricing } from '@/types'
 enableAutoUnmount(afterEach)
 
 const getMarketplaceModels = vi.hoisted(() => vi.fn())
+const getBusinessUsageStats = vi.hoisted(() => vi.fn())
+vi.mock('@/api/admin/usage', () => ({ getStats: getBusinessUsageStats, default: { getStats: getBusinessUsageStats } }))
 const getMarketplaceRoutingHealth = vi.hoisted(() => vi.fn())
 const checkAuth = vi.hoisted(() => vi.fn())
 const fetchPublicSettings = vi.hoisted(() => vi.fn())
@@ -260,9 +262,42 @@ describe('ModelMarketplaceView', () => {
     getMarketplaceModels.mockReset()
     getMarketplaceModels.mockResolvedValue(marketplaceFixture())
     getMarketplaceRoutingHealth.mockReset()
+    getBusinessUsageStats.mockReset()
+    getBusinessUsageStats.mockResolvedValue({ total_requests: 2, total_input_tokens: 100, total_output_tokens: 40, total_cache_read_tokens: 300, total_cache_creation_tokens: 100 })
     checkAuth.mockClear()
     fetchPublicSettings.mockClear()
     copyToClipboard.mockClear()
+  })
+
+  it('管理员按渠道查询统一的滚动 24 小时业务用量，并限制刷新频率', async () => {
+    authState.isAdmin = true
+    getMarketplaceRoutingHealth.mockResolvedValue(routingHealthFixture())
+    const wrapper = await mountMarketplace()
+    expect(getBusinessUsageStats).toHaveBeenCalledTimes(4)
+    const ranges = getBusinessUsageStats.mock.calls.map(([params]) => params)
+    expect(ranges.map(params => params.group_id)).toEqual([1, 2, 3, 4])
+    expect(new Set(ranges.map(params => params.end_date)).size).toBe(1)
+    expect(Date.parse(ranges[0].end_date) - Date.parse(ranges[0].start_date)).toBe(86_400_000)
+    expect(wrapper.findAll('[data-testid="group-business-usage"]')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="group-business-usage"]').text()).toContain('60.0%')
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(getBusinessUsageStats).toHaveBeenCalledTimes(4)
+  })
+
+  it('普通用户不查询或显示管理员业务用量', async () => {
+    const wrapper = await mountMarketplace()
+    expect(getBusinessUsageStats).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="group-business-usage"]').exists()).toBe(false)
+  })
+
+  it('业务统计失败保留渠道主体，并明确显示用量不可用', async () => {
+    authState.isAdmin = true
+    getMarketplaceRoutingHealth.mockResolvedValue(routingHealthFixture())
+    getBusinessUsageStats.mockRejectedValue(new Error('offline'))
+    const wrapper = await mountMarketplace()
+    expect(wrapper.findAll('[data-testid="marketplace-group-section"]')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="group-business-usage"]').text()).toContain('marketplace.businessUsageError')
   })
 
   it('管理员健康快照可用时展示全渠道表', async () => {
