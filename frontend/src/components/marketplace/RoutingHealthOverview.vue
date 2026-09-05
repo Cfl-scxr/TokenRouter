@@ -126,7 +126,11 @@ const currentHitLabel = computed(() => {
 function currentStatusKey(provider: MarketplaceRoutingHealthProvider): string {
   if (!provider.manual.enabled || provider.routeState === 'manual_disabled') return 'manual_disabled'
   if (provider.routeState === 'unavailable' || provider.routeState === 'needs_action') return 'unavailable'
-  if (provider.routeState === 'cooldown') return 'degraded'
+  if (provider.routeState === 'cooldown') {
+    return provider.healthLevel === 'needs_action' || provider.health.consecutiveFailures >= 2
+      ? 'unavailable'
+      : 'degraded'
+  }
   if (provider.routeState === 'warming') return 'recovering'
   if (provider.healthLevel === 'needs_action') return 'unavailable'
   if (provider.healthLevel === 'recovering') return 'recovering'
@@ -150,9 +154,9 @@ function healthLabel(level: string): string {
 function healthStatusHint(provider: MarketplaceRoutingHealthProvider): string {
   const status = currentStatusKey(provider)
   if (status === 'unknown') return t('marketplace.probeStatusUnknownHint')
+  if (status === 'unavailable') return t('marketplace.routingHealthRouteUnavailableHint')
   if (provider.routeState === 'cooldown') return t('marketplace.routingHealthRouteCooldownHint')
   if (provider.routeState === 'warming') return t('marketplace.routingHealthRouteWarmingHint')
-  if (provider.routeState === 'unavailable' || provider.routeState === 'needs_action') return t('marketplace.routingHealthRouteUnavailableHint')
   return healthLabel(status)
 }
 

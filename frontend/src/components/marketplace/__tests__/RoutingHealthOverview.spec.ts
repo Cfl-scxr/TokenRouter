@@ -151,6 +151,26 @@ describe('RoutingHealthOverview', () => {
     expect(cells[1].get('span').attributes('title')).toBe('marketplace.routingHealthRouteUnavailableHint')
   })
 
+  it('累计失败达到门槛时即使仍在冷却也显示故障', () => {
+    const failed = provider(1, 'unavailable')
+    failed.routeState = 'cooldown'
+    failed.healthScore = 0
+    failed.health.consecutiveFailures = 3
+    const snapshot: MarketplaceRoutingHealthSnapshot = {
+      available: true,
+      schemaVersion: 1,
+      state: 'observed',
+      providers: [failed],
+    }
+
+    const wrapper = mount(RoutingHealthOverview, { props: { snapshot } })
+    const cells = wrapper.get('[data-testid="routing-health-provider"]').findAll('td')
+
+    expect(cells[1].text()).toContain('marketplace.routingHealthUnavailable')
+    expect(cells[2].text()).toBe('0')
+    expect(cells[1].get('span').attributes('title')).toBe('marketplace.routingHealthRouteUnavailableHint')
+  })
+
   it('恢复观察不显示为未知或故障', () => {
     const recovering = provider(1, 'recovering')
     recovering.routeState = 'warming'
