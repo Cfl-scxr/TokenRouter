@@ -144,17 +144,20 @@ func passthroughLifecycleConfig() *wsFixtureOptions {
 }
 
 func passthroughLifecycleAccount() *gatewayprovider.ExecutionAccount {
-	return &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 901,
-		Name:        "passthrough-lifecycle",
-		Platform:    capability.PlatformOpenAI,
-		Type:        capability.AccountTypeAPIKey,
-		Status:      billing.StatusActive,
-		Schedulable: true,
-		Concurrency: 1,
-		Credentials: map[string]any{"api_key": "sk-test"},
-		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_mode": accountcore.OpenAIWSIngressModePassthrough,
-		}},
+	return &gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 901,
+			Name:        "passthrough-lifecycle",
+			Platform:    capability.PlatformOpenAI,
+			Type:        capability.AccountTypeAPIKey,
+			Status:      billing.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"api_key": "sk-test"},
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_mode": accountcore.OpenAIWSIngressModePassthrough,
+			},
+		},
 	}
 }
 
@@ -215,7 +218,6 @@ func startPassthroughLifecycleServerWithHooks(
 }
 
 func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.T) {
-
 	tests := []struct {
 		name        string
 		events      []string
@@ -231,7 +233,7 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 				`{"type":"response.failed","response":{"id":"resp_error","error":{"code":"cyber_policy","message":"blocked by paired failed event"},"usage":{"input_tokens":9,"output_tokens":2}}}`,
 			},
 			wantBody:    `"type":"error"`,
-			wantMessage: "blocked by error event",
+			wantMessage: "Request blocked by upstream cyber-security policy",
 			wantInput:   5,
 			wantOutput:  1,
 		},
@@ -241,7 +243,7 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 				`{"type":"response.failed","response":{"id":"resp_failed","error":{"code":"cyber_policy","message":"blocked by failed event"},"usage":{"input_tokens":9,"output_tokens":2}}}`,
 			},
 			wantBody:    `"type":"response.failed"`,
-			wantMessage: "blocked by failed event",
+			wantMessage: "Request blocked by upstream cyber-security policy",
 			wantInput:   9,
 			wantOutput:  2,
 		},
@@ -279,10 +281,12 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 			clientConn := dialPassthroughLifecycleClient(t, server)
 			defer func() { _ = clientConn.CloseNow() }()
 
-			for range tt.events {
-				_, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
-				require.NoError(t, err)
-			}
+			// 首个拒绝即终止；后续重复 failed 帧不能继续下发。
+			event, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+			require.NoError(t, err)
+			require.Equal(t, "cyber_policy", gjson.GetBytes(event, "response.error.code").String())
+			_, closeErr := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+			require.Equal(t, coderws.StatusPolicyViolation, coderws.CloseStatus(closeErr))
 
 			select {
 			case mark := <-markSeen:
@@ -295,7 +299,6 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 			case <-time.After(3 * time.Second):
 				t.Fatal("cyber mark was not visible to AfterTurn")
 			}
-			require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
 			select {
 			case <-serverErr:
 			case <-time.After(3 * time.Second):
@@ -307,7 +310,6 @@ func TestPassthroughLifecycle_CyberTerminalEventsMarkBeforeAfterTurn(t *testing.
 }
 
 func TestPassthroughLifecycle_NonCyberFailureKeepsAccountSideEffects(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -354,7 +356,6 @@ func TestPassthroughLifecycle_NonCyberFailureKeepsAccountSideEffects(t *testing.
 }
 
 func TestPassthroughLifecycle_CyberSkipsFailureAccountSideEffects(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -376,7 +377,8 @@ func TestPassthroughLifecycle_CyberSkipsFailureAccountSideEffects(t *testing.T) 
 	require.Zero(t, repo.setErrorCalls, "cyber_policy is request-scoped and must not cool down the account")
 	require.False(t, wsFixtureAccountBlocked(svc, account))
 
-	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	_, closeErr := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.Equal(t, coderws.StatusPolicyViolation, coderws.CloseStatus(closeErr))
 	select {
 	case <-serverErr:
 	case <-time.After(3 * time.Second):
@@ -385,7 +387,6 @@ func TestPassthroughLifecycle_CyberSkipsFailureAccountSideEffects(t *testing.T) 
 }
 
 func TestPassthroughLifecycle_CloseReasonTruncationPreservesUTF8(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -487,7 +488,6 @@ func TestOpenAIWSPassthroughTurnLifecycle_SerializesTerminalCommitAndNextTurn(t 
 }
 
 func TestPassthroughLifecycle_LeaseLossSendsRetryClose(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	upstream := newStagedPassthroughConn()
 	upstream.Send(`{"type":"response.created","response":{"id":"resp_lease","model":"gpt-5.1"}}`)
@@ -514,7 +514,6 @@ func TestPassthroughLifecycle_LeaseLossSendsRetryClose(t *testing.T) {
 }
 
 func TestPassthroughLifecycle_CompletedTurnStartsInterTurnIdle(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -540,7 +539,6 @@ func TestPassthroughLifecycle_CompletedTurnStartsInterTurnIdle(t *testing.T) {
 }
 
 func TestPassthroughLifecycle_ActiveTurnInactivityUsesReadTimeout(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -570,7 +568,6 @@ func TestPassthroughLifecycle_ActiveTurnInactivityUsesReadTimeout(t *testing.T) 
 }
 
 func TestPassthroughLifecycle_PreambleAllowsPromptClientCancel(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	options := passthroughLifecycleConfig()
@@ -602,7 +599,6 @@ func TestPassthroughLifecycle_PreambleAllowsPromptClientCancel(t *testing.T) {
 }
 
 func TestPassthroughLifecycle_RejectsOverlappingResponseCreate(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	options := passthroughLifecycleConfig()
@@ -640,7 +636,6 @@ func TestPassthroughLifecycle_RejectsOverlappingResponseCreate(t *testing.T) {
 }
 
 func TestPassthroughLifecycle_ActiveTurnActivityRefreshesReadTimeout(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -681,7 +676,6 @@ func TestPassthroughLifecycle_ActiveTurnActivityRefreshesReadTimeout(t *testing.
 }
 
 func TestPassthroughLifecycle_TerminalSwitchesToInterTurnIdleTimeout(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	options := passthroughLifecycleConfig()
@@ -726,7 +720,6 @@ func TestPassthroughLifecycle_TerminalSwitchesToInterTurnIdleTimeout(t *testing.
 }
 
 func TestPassthroughLifecycle_FirstOutputTimeoutRemainsBounded(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -747,7 +740,6 @@ func TestPassthroughLifecycle_FirstOutputTimeoutRemainsBounded(t *testing.T) {
 }
 
 func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()
@@ -779,7 +771,6 @@ func TestPassthroughLifecycle_ResponseCreatedTimeoutClosesWithoutFailover(t *tes
 }
 
 func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
-
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())
 	defer cancelControl(context.Canceled)
 	upstream := newStagedPassthroughConn()

@@ -62,6 +62,9 @@ func IsWSRateLimitError(codeRaw, errTypeRaw, msgRaw string) bool {
 }
 
 func ClassifyWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (string, bool) {
+	if codeRaw == "cyber_policy" || codeRaw == "session_blocked_by_cyber_policy" {
+		return codeRaw, false
+	}
 	code := strings.ToLower(strings.TrimSpace(codeRaw))
 	errType := strings.ToLower(strings.TrimSpace(errTypeRaw))
 	msg := strings.ToLower(strings.TrimSpace(msgRaw))

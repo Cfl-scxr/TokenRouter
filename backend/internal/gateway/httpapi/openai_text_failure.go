@@ -1,10 +1,10 @@
 package httpapi
 
 import (
-	accountcore "github.com/TokenFlux/TokenRouter/internal/account"
-
 	"context"
 	"net/http"
+
+	accountcore "github.com/TokenFlux/TokenRouter/internal/account"
 
 	forwardcore "github.com/TokenFlux/TokenRouter/internal/gateway/forward"
 	gatewayprovider "github.com/TokenFlux/TokenRouter/internal/gateway/provider"
@@ -35,7 +35,7 @@ func (s *OpenAITextExecutor) httpFailover(
 		shouldFailover = gatewayprovider.ShouldFailoverGrokResponse(resp.StatusCode, respBody)
 	}
 	// 请求级拒绝不能触发账号策略或池模式重试。
-	if detectHit, _, _ := openai.DetectOpenAICyberPolicy(respBody); detectHit || gatewayprovider.IsOpenAICyberWarningPayload(respBody, upstreamMsg) ||
+	if detectHit, _, _ := openai.DetectOpenAISafetyTerminal(respBody); detectHit || gatewayprovider.IsOpenAICyberWarningPayload(respBody, upstreamMsg) ||
 		openai.IsOpenAIClientInvalidRequestError(resp.StatusCode, upstreamMsg, respBody) ||
 		openai.IsOpenAIContextWindowError(upstreamMsg, respBody) ||
 		(account != nil && account.Record.Platform == capability.PlatformGrok && grok.IsGrokContentPolicyRejection(resp.StatusCode, respBody)) {

@@ -206,6 +206,14 @@ func (s *OpenAIWebSocketExecutor) forwardOpenAIWSV2(
 	})
 	if err != nil {
 		var agentDialErr *openai.WSDialError
+		if errors.As(err, &agentDialErr) && agentDialErr != nil {
+			if hit, code, msg := openai.DetectOpenAISafetyTerminal(agentDialErr.ResponseBody); hit {
+				MarkOpenAICyberPolicyEvent(c, agentDialErr.ResponseBody, agentDialErr.StatusCode, nil)
+				MarkResponseCommitted(c)
+				DefaultOpenAIErrorOutput().WriteStreamingErrorWithCode(c, http.StatusForbidden, openai.OpenAISafetyTerminalType(code), code, msg, c.Writer.Written(), false)
+				return nil, fmt.Errorf("openai safety refusal: %s", code)
+			}
+		}
 		if s.Requests.Identity.UsesAgentIdentity(ctx, account) && errors.As(err, &agentDialErr) && openai.IsAgentTaskInvalidWSDialError(agentDialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
 			*agentTaskRecoveryTried = true
 			if recoveryErr := s.Requests.Identity.Recover(ctx, account, account.View().GetCredential("task_id")); recoveryErr != nil {
@@ -561,6 +569,12 @@ func (s *OpenAIWebSocketExecutor) forwardOpenAIWSV2(
 		}
 		if eventType == "error" || eventType == "response.failed" {
 			MarkOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
+		}
+		if hit, code, msg := openai.DetectOpenAISafetyTerminal(message); hit {
+			lease.MarkBroken()
+			MarkResponseCommitted(c)
+			DefaultOpenAIErrorOutput().WriteStreamingErrorWithCode(c, http.StatusForbidden, openai.OpenAISafetyTerminalType(code), code, msg, wroteDownstream || c.Writer.Written(), false)
+			return nil, fmt.Errorf("openai safety refusal: %s", code)
 		}
 		var responseEvent protocolwire.ResponsesStreamEvent
 		if err := json.Unmarshal(message, &responseEvent); err == nil {

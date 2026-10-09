@@ -184,7 +184,7 @@ func ReadMessagesStreaming(resp *http.Response, c *upstream.OutputContext, optio
 			payloadBytes := []byte(payload)
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
-			if hit, code, msg := DetectOpenAICyberPolicy(payloadBytes); hit {
+			if hit, code, msg := DetectOpenAISafetyTerminal(payloadBytes); hit {
 				options.MarkCyber(CyberObservation{
 					Code:           code,
 					Message:        msg,
@@ -195,11 +195,7 @@ func ReadMessagesStreaming(resp *http.Response, c *upstream.OutputContext, optio
 				})
 				if !clientDisconnected {
 					writeStreamHeaders()
-					clientMsg := msg
-					if clientMsg == "" {
-						clientMsg = "Request blocked by upstream cyber-security policy"
-					}
-					if _, err := fmt.Fprint(c.Writer, options.BuildStreamError("invalid_request_error", clientMsg)); err == nil {
+					if _, err := fmt.Fprintf(c.Writer, "event: error\ndata: %s\n\n", SafetyTerminalPayload(code, false)); err == nil {
 						c.Writer.Flush()
 					}
 					clientDisconnected = true

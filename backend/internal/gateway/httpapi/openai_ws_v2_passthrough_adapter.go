@@ -36,6 +36,7 @@ func (c openAIWSCoreFrames) ReadFrame(ctx context.Context) (int, []byte, error) 
 	typ, body, err := c.FrameConn.ReadFrame(ctx)
 	return int(typ), body, err
 }
+
 func (c openAIWSCoreFrames) WriteFrame(ctx context.Context, typ int, body []byte) error {
 	return c.FrameConn.WriteFrame(ctx, coderws.MessageType(typ), body)
 }
@@ -95,7 +96,7 @@ func openAIWSPassthroughRelayClientClose(exit openaiwsv2.RelayExit, completedTur
 }
 
 func markOpenAIWSV2PassthroughCyberPolicy(c *gin.Context, payload []byte) bool {
-	hit, code, message := upstreamopenai.DetectOpenAICyberPolicy(payload)
+	hit, code, message := upstreamopenai.DetectOpenAISafetyTerminal(payload)
 	if !hit {
 		return false
 	}

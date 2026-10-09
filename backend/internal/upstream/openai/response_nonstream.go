@@ -46,10 +46,14 @@ type NonStreamOptions struct {
 func IsEventStreamResponse(header http.Header) bool {
 	return strings.Contains(strings.ToLower(header.Get("Content-Type")), "text/event-stream")
 }
+
 func ReadNonStreamingResponse(ctx context.Context, resp *http.Response, c *upstream.OutputContext, options NonStreamOptions, originalModel, mappedModel string) (*NonStreamingResult, error) {
 	body, err := options.ReadBody(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+	if refusal := FindOpenAISafetyTerminal(body); refusal != nil {
+		return nil, options.FailedTerminal(resp, mappedModel, refusal, OpenAISafetyTerminalMessage)
 	}
 	options.ObserveTier(body)
 
@@ -132,6 +136,9 @@ func ReadNonStreamingResponse(ctx context.Context, resp *http.Response, c *upstr
 }
 
 func ReadSSEAsJSON(ctx context.Context, resp *http.Response, c *upstream.OutputContext, options NonStreamOptions, body []byte, originalModel, mappedModel string) (*NonStreamingResult, error) {
+	if refusal := FindOpenAISafetyTerminal(body); refusal != nil {
+		return nil, options.FailedTerminal(resp, mappedModel, refusal, OpenAISafetyTerminalMessage)
+	}
 	bodyText := string(body)
 	options.ObserveSSE(bodyText)
 	terminalType, terminalPayload, terminalOK := wire.ExtractOpenAISSETerminalEvent(bodyText)

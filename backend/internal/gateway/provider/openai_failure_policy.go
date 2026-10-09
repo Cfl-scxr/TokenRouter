@@ -52,6 +52,9 @@ func ShouldFailoverUpstreamStatus(statusCode int) bool {
 }
 
 func ShouldFailoverOpenAIResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if hit, _, _ := openai.DetectOpenAISafetyTerminal(upstreamBody); hit {
+		return false
+	}
 	// cyber_policy 即使被中间层包成 5xx，仍属于请求拒绝，不触发账号切换。
 	if IsOpenAICyberWarningPayload(upstreamBody, upstreamMsg) {
 		return false
@@ -200,5 +203,4 @@ func OpenAIStreamFailureRetryable(account *ExecutionAccount, payload []byte, mes
 	semanticStatus := openai.OpenAIStreamFailedEventSemanticStatus(payload, message)
 	return account.View().IsPoolModeRetryableStatus(semanticStatus) ||
 		openai.IsOpenAITransientProcessingError(http.StatusBadRequest, message, payload)
-
 }

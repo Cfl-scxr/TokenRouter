@@ -253,7 +253,6 @@ func RunChat(ctx context.Context, body []byte, promptCacheKey, defaultMappedMode
 	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
 	updatedBody, policyErr := p.ApplyChatFast(ctx, upstreamModel, responsesBody)
 	if policyErr != nil {
-
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
@@ -301,6 +300,10 @@ func RunChat(ctx context.Context, body []byte, promptCacheKey, defaultMappedMode
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, _ := p.ReadUpstreamError(resp)
+		if hit, _, _ := openai.DetectOpenAISafetyTerminal(respBody); hit {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			return p.ChatErrorResponse(resp, billingModel)
+		}
 		if !p.AgentRecoveryTried(ctx) && p.IsAgentIdentity(ctx) && p.InvalidAgentTask(resp.StatusCode, respBody) {
 			if err := p.RecoverAgentTask(ctx); err != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", err)

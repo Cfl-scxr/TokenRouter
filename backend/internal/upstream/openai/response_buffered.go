@@ -31,6 +31,7 @@ func NewCompatSSEScanner(r io.Reader, maxLineSize int) *bufio.Scanner {
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 	return scanner
 }
+
 func IsCompatResponsesTerminalEvent(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
 	case "response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled", "error":
@@ -58,6 +59,9 @@ func (e *CompatBufferedReadError) Unwrap() error { return e.cause }
 func CompatTerminalResponse(event *wire.ResponsesStreamEvent, payload []byte) *wire.ResponsesResponse {
 	if event == nil {
 		return nil
+	}
+	if hit, code, message := DetectOpenAISafetyTerminal(payload); hit {
+		return &wire.ResponsesResponse{Status: "failed", Error: &wire.ResponsesError{Code: code, Message: message}}
 	}
 	if event.Response != nil {
 		return event.Response

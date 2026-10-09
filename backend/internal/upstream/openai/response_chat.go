@@ -232,7 +232,7 @@ func ReadChatStreaming(resp *http.Response, c *upstream.OutputContext, options C
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
 			payloadBytes := []byte(payload)
 			message := ExtractOpenAISSEErrorMessage(payloadBytes)
-			if hit, code, msg := DetectOpenAICyberPolicy(payloadBytes); hit {
+			if hit, code, msg := DetectOpenAISafetyTerminal(payloadBytes); hit {
 				options.MarkCyber(CyberObservation{
 					Code:           code,
 					Message:        msg,
@@ -243,12 +243,7 @@ func ReadChatStreaming(resp *http.Response, c *upstream.OutputContext, options C
 				})
 				if !clientDisconnected {
 					writeStreamHeaders()
-					clientMsg := msg
-					if clientMsg == "" {
-						clientMsg = "Request blocked by upstream cyber-security policy"
-					}
-					if _, err := fmt.Fprint(c.Writer, options.BuildStreamError(code, clientMsg)); err == nil {
-						_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
+					if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", SafetyTerminalPayload(code, false)); err == nil {
 						if flusher, ok := c.Writer.(http.Flusher); ok {
 							flusher.Flush()
 						}

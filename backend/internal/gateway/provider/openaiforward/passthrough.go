@@ -158,7 +158,6 @@ func RunPassthrough(ctx context.Context, in PassthroughInput, p PassthroughPorts
 	}
 	updatedBody, policyErr := p.ApplyFastPass(ctx, policyModel, body)
 	if policyErr != nil {
-
 		return nil, policyErr
 	}
 	body = updatedBody
@@ -241,6 +240,9 @@ func RunPassthrough(ctx context.Context, in PassthroughInput, p PassthroughPorts
 			probeBody := p.ReadErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(probeBody))
+			if hit, _, _ := openai.DetectOpenAISafetyTerminal(probeBody); hit {
+				return nil, p.ErrorResponsePass(ctx, resp, body, probeBody)
+			}
 			if retryBody, reason, changed, retryErr := openai.NormalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, body, probeBody); retryErr != nil {
 				return nil, fmt.Errorf("normalize passthrough rejected Responses field retry body: %w", retryErr)
 			} else if changed && rejectedFieldRetryState.Allow(retryBody) {

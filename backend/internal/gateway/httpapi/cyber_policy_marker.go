@@ -14,6 +14,10 @@ const opsCyberPolicyKey = "ops_cyber_policy"
 
 // MarkOpsCyberPolicy 保持首个标记生效，后续事件不覆盖原用量与失败状态。
 func MarkOpsCyberPolicy(c *gin.Context, mark moderationflow.Mark) {
+	// 其他网关转来的拒绝只终结当前请求，不据此新增本地会话封禁或账号处罚。
+	if mark.Code == "session_blocked_by_cyber_policy" {
+		return
+	}
 	if c == nil || GetOpsCyberPolicy(c) != nil {
 		return
 	}

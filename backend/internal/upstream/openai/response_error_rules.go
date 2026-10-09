@@ -14,8 +14,10 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-const OpenAIPropertyNameAboveMaxLengthCode = "property_name_above_max_length"
-const OpenAICapacityShedRetryableClientCode = "server_error"
+const (
+	OpenAIPropertyNameAboveMaxLengthCode  = "property_name_above_max_length"
+	OpenAICapacityShedRetryableClientCode = "server_error"
+)
 
 func OpenAIStreamEventIsPreamble(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
@@ -320,7 +322,7 @@ func OpenAIStream403AccountFailure(payload []byte, message string) bool {
 }
 
 func OpenAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
-	if hit, _, _ := DetectOpenAICyberPolicy(payload); hit {
+	if hit, _, _ := DetectOpenAISafetyTerminal(payload); hit {
 		return false
 	}
 	if IsOpenAIContextWindowError(message, payload) {
@@ -377,7 +379,7 @@ func OpenAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 // OpenAIStreamErrorEventShouldFailover 只处理尚未写出语义内容的裸 error 事件。
 // response.failed 仍由统一账号策略处理，避免重复记录或重复切号。
 func OpenAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
-	if hit, _, _ := DetectOpenAICyberPolicy(payload); hit {
+	if hit, _, _ := DetectOpenAISafetyTerminal(payload); hit {
 		return false
 	}
 	if IsOpenAIContextWindowError(message, payload) {
@@ -598,6 +600,9 @@ func SanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string
 	if (!isFailedEvent && eventType != "error") || len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return payload, false
 	}
+	if hit, code, _ := DetectOpenAISafetyTerminal(payload); hit {
+		return SafetyTerminalPayload(code, isFailedEvent), true
+	}
 	updated := payload
 	// 容量降载码对 Codex CLI 是致命错误；事件既然要写给客户端（failover 已不可用），
 	// 就改写为客户端可重试的错误码。error 帧与 response.failed 都要改：上游降载
@@ -655,6 +660,51 @@ func SanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string
 		updated = next
 	}
 	return updated, !bytes.Equal(updated, payload)
+}
+
+// DetectOpenAISafetyTerminal 只判断当前请求；上游会话拒绝不授权新增本地封禁。
+func DetectOpenAISafetyTerminal(payload []byte) (bool, string, string) {
+	for _, path := range []string{"error.code", "response.error.code"} {
+		code := gjson.GetBytes(payload, path).String()
+		if code == "cyber_policy" || code == "session_blocked_by_cyber_policy" {
+			return true, code, OpenAISafetyTerminalMessage
+		}
+	}
+	return false, "", ""
+}
+
+// FindOpenAISafetyTerminal 保留缓冲 SSE 中首个拒绝，忽略其后的成功或工具事件。
+func FindOpenAISafetyTerminal(body []byte) []byte {
+	if hit, _, _ := DetectOpenAISafetyTerminal(body); hit {
+		return body
+	}
+	for line := range bytes.SplitSeq(body, []byte{'\n'}) {
+		line = bytes.TrimSpace(line)
+		if data, ok := bytes.CutPrefix(line, []byte("data:")); ok {
+			if hit, _, _ := DetectOpenAISafetyTerminal(data); hit {
+				return data
+			}
+		}
+	}
+	return nil
+}
+
+const OpenAISafetyTerminalMessage = "Request blocked by upstream cyber-security policy"
+
+func OpenAISafetyTerminalType(code string) string {
+	if code == "session_blocked_by_cyber_policy" {
+		return "permission_error"
+	}
+	return "invalid_request_error"
+}
+
+// SafetyTerminalPayload 仅输出白名单错误字段，不透传上游诊断文本。
+func SafetyTerminalPayload(code string, responses bool) []byte {
+	errorJSON := `{"code":"` + code + `","type":"` + OpenAISafetyTerminalType(code) + `","message":"` + OpenAISafetyTerminalMessage + `"}`
+	if responses {
+		return []byte(`{"type":"response.failed","response":{"status":"failed","error":` + errorJSON + `}}`)
+	}
+	return []byte(`{"type":"error","error":` + errorJSON + `}`)
 }
 
 // DetectOpenAICyberPolicy 精确识别 error.code 或 response.error.code 为 cyber_policy 的响应。

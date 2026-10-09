@@ -48,7 +48,7 @@ func IsContentPolicyRejection(responseBody []byte) bool {
 // 413 请求体限制可能是账号上游代理的独有限制，仍允许切换账号，因此不在这里统一排除。
 func IsRequestScopedAccountFailure(account *ExecutionAccount, statusCode int, responseBody []byte) bool {
 	upstreamMsg := strings.TrimSpace(upstream.ExtractErrorMessage(responseBody))
-	if hit, _, _ := openai.DetectOpenAICyberPolicy(responseBody); hit {
+	if hit, _, _ := openai.DetectOpenAISafetyTerminal(responseBody); hit {
 		return true
 	}
 	if IsOpenAICyberWarningPayload(responseBody, upstreamMsg) ||

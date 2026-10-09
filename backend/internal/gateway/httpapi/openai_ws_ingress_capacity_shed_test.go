@@ -49,7 +49,6 @@ func (r *openAIWSIngressCapacityShedRepo) UpdateExtra(context.Context, int64, ma
 //
 // 第二个用例锁住改写范围：非容量类错误码必须原样下发，客户端依赖原码各自处理。
 func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *testing.T) {
-
 	tests := []struct {
 		name           string
 		upstreamEvents [][]byte
@@ -103,15 +102,18 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 			pool := newOpenAIWSConnPool(options)
 			pool.SetClientDialerForTest(&openAIWSCaptureDialer{conn: captureConn})
 
-			account := gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 5401,
-				Name:        "openai-ingress-capacity-shed",
-				Platform:    capability.PlatformOpenAI,
-				Type:        capability.AccountTypeAPIKey,
-				Status:      billing.StatusActive,
-				Schedulable: true,
-				Concurrency: 1,
-				Credentials: map[string]any{"api_key": "sk-test"},
-				Extra:       map[string]any{"responses_websockets_v2_enabled": true}},
+			account := gatewayprovider.ExecutionAccount{
+				Record: accountcore.Record{
+					LoadLocation: time.LoadLocation, ID: 5401,
+					Name:        "openai-ingress-capacity-shed",
+					Platform:    capability.PlatformOpenAI,
+					Type:        capability.AccountTypeAPIKey,
+					Status:      billing.StatusActive,
+					Schedulable: true,
+					Concurrency: 1,
+					Credentials: map[string]any{"api_key": "sk-test"},
+					Extra:       map[string]any{"responses_websockets_v2_enabled": true},
+				},
 			}
 			repo := &openAIWSIngressCapacityShedRepo{wsFixtureAccountStore: wsFixtureAccountStore{accounts: []gatewayprovider.ExecutionAccount{account}}}
 			svc := newWSFixture(wsFixtureInputs{accounts: repo, health: newUpstreamHealthForTest(repo, nil, nil, accountcore.HealthOptions{}, nil), transport: &auxiliaryHTTPRecorder{}, cache: &sessiontestkit.StickyCache{}, options: options, corrector: openai.NewCodexToolCorrector(), pool: pool})
@@ -186,7 +188,6 @@ func TestProxyResponsesWebSocketFromClient_RewritesCapacityShedCodeForClient(t *
 
 // ctx_pool 必须在错误早退前保存风控证据和用量，供 handler 的 AfterTurn 消费。
 func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *testing.T) {
-
 	tests := []struct {
 		name          string
 		upstreamEvent []byte
@@ -196,9 +197,10 @@ func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *
 		wantOutput    int
 	}{
 		{
-			name:          "error_before_rate_limit_failover",
+			name:          "safety_error_overrides_rate_limit_failover",
 			upstreamEvent: []byte(`{"type":"error","error":{"type":"rate_limit_error","code":"cyber_policy","message":"rate limit exceeded by cyber policy"},"usage":{"input_tokens":5,"output_tokens":1}}`),
-			wantFailover:  true,
+			wantFailover:  false,
+			wantClientMsg: true,
 			wantInput:     5,
 			wantOutput:    1,
 		},
@@ -225,12 +227,15 @@ func TestProxyResponsesWebSocketFromClient_MarksCyberPolicyBeforeEarlyReturn(t *
 			t.Cleanup(pool.Close)
 			pool.SetClientDialerForTest(&openAIWSCaptureDialer{conn: captureConn})
 			svc := newWSFixture(wsFixtureInputs{options: options, transport: &auxiliaryHTTPRecorder{}, cache: &sessiontestkit.StickyCache{}, corrector: openai.NewCodexToolCorrector(), pool: pool})
-			account := &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 5402, Name: "openai-ingress-cyber", Platform: capability.PlatformOpenAI,
-				Type: capability.AccountTypeAPIKey, Status: billing.StatusActive, Schedulable: true, Concurrency: 1,
-				Credentials: map[string]any{"api_key": "sk-test"},
-				Extra: map[string]any{
-					"openai_apikey_responses_websockets_v2_mode": accountcore.OpenAIWSIngressModeCtxPool,
-				}},
+			account := &gatewayprovider.ExecutionAccount{
+				Record: accountcore.Record{
+					LoadLocation: time.LoadLocation, ID: 5402, Name: "openai-ingress-cyber", Platform: capability.PlatformOpenAI,
+					Type: capability.AccountTypeAPIKey, Status: billing.StatusActive, Schedulable: true, Concurrency: 1,
+					Credentials: map[string]any{"api_key": "sk-test"},
+					Extra: map[string]any{
+						"openai_apikey_responses_websockets_v2_mode": accountcore.OpenAIWSIngressModeCtxPool,
+					},
+				},
 			}
 
 			markCh := make(chan *moderationflow.Mark, 1)

@@ -203,7 +203,6 @@ func (s *OpenAIWebSocketExecutor) executeWSIngressAdapter(
 	var baseAcquireReq openai.WSAcquireRequest
 	var pool *openai.WSConnPool
 	openPool := func(firstPayload gatewayws.ClientPayload) error {
-
 		firstRoutingFields := gjson.GetManyBytes(firstPayload.PayloadRaw, "model", "service_tier")
 		wsHeaders, _, buildHdrErr := s.buildOpenAIWSHeaders(
 			ctx,
@@ -292,6 +291,13 @@ func (s *OpenAIWebSocketExecutor) executeWSIngressAdapter(
 		lease, acquireErr := pool.Acquire(acquireCtx, req)
 		acquireCancel()
 		var dialErr *openai.WSDialError
+		if acquireErr != nil && errors.As(acquireErr, &dialErr) && dialErr != nil {
+			if hit, code, _ := openai.DetectOpenAISafetyTerminal(dialErr.ResponseBody); hit {
+				MarkOpenAICyberPolicyEvent(c, dialErr.ResponseBody, dialErr.StatusCode, nil)
+				_ = writeClientMessage(openai.SafetyTerminalPayload(code, true))
+				return nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, openai.OpenAISafetyTerminalMessage, fmt.Errorf("openai safety refusal: %s", code))
+			}
+		}
 		if acquireErr != nil && s.Requests.Identity.UsesAgentIdentity(ctx, account) && errors.As(acquireErr, &dialErr) && openai.IsAgentTaskInvalidWSDialError(dialErr) && allowRecovery {
 			return nil, &gatewayws.AcquireRecoveryError{Err: acquireErr}
 		}

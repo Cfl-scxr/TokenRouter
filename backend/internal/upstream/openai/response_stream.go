@@ -94,7 +94,6 @@ type StreamingResult struct {
 }
 
 func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream.OutputContext, options StreamOptions, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (observed *StreamingResult, failure error) {
-
 	firstOutputTimeout := options.FirstOutputTimeout
 	guardFirstOutput := firstOutputTimeout > 0
 	stageFirstOutput := options.StageFirstOutput
@@ -253,6 +252,7 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sawTerminalEvent := false
 	sawFailedEvent := false
+	safetyTerminalCode := ""
 	sawBareError := false
 	sawResponseFailed := false
 	responsesSemanticOutputSeen := false
@@ -505,6 +505,12 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processSSELine := func(line string, queueDrained bool) {
+		defer func() {
+			if safetyTerminalCode != "" && failureDelivered {
+				_ = resp.Body.Close()
+				streamEarlyErr = fmt.Errorf("openai safety refusal: %s", safetyTerminalCode)
+			}
+		}()
 		if streamEarlyErr != nil {
 			return
 		}
@@ -566,10 +572,14 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
 				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
 				hasObservedUsage = wire.ParseSSEUsageBytesWithType(dataBytes, eventType, usage) || hasObservedUsage
-				if hit, code, msg := DetectOpenAICyberPolicy(dataBytes); hit {
+				if hit, code, msg := DetectOpenAISafetyTerminal(dataBytes); hit {
 					cyberHit = true
+					safetyTerminalCode = code
+					failedMessage = msg
+					codexFailureTerminal = false
+					sawBareError = false
+					suppressCurrentEvent = false
 					options.MarkCyber(CyberObservation{
-
 						Code: code,
 
 						Message: msg,
@@ -1017,5 +1027,4 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 			}
 		}
 	}
-
 }

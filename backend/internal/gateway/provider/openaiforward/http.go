@@ -115,6 +115,9 @@ func RunHTTP(ctx context.Context, input HTTPInput, o HTTPOptions) (*Result, erro
 			payload := o.ReadErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(payload))
+			if hit, _, _ := openai.DetectOpenAISafetyTerminal(payload); hit {
+				return nil, o.ErrorResponse(resp, body, input.BillingModel)
+			}
 			if !agentRetried && o.IsAgentIdentity(ctx) && o.InvalidAgentTask(resp.StatusCode, payload) {
 				agentRetried = true
 				if err := o.RecoverAgentTask(ctx); err != nil {
@@ -233,10 +236,12 @@ func RunHTTP(ctx context.Context, input HTTPInput, o HTTPOptions) (*Result, erro
 		if usage == nil {
 			usage = &wire.ForwardUsage{}
 		}
-		result := &Result{RequestID: resp.Header.Get("x-request-id"), ResponseID: responseID, Headers: resp.Header,
+		result := &Result{
+			RequestID: resp.Header.Get("x-request-id"), ResponseID: responseID, Headers: resp.Header,
 			Usage: *usage, Model: input.OriginalModel, BillingModel: input.BillingModel, UpstreamModel: upstreamModel,
 			UpstreamResponseServiceTier: o.ObservedServiceTier(), ServiceTier: o.ResolvedServiceTier(tier), ReasoningEffort: input.ReasoningEffort,
-			Stream: input.Stream, Duration: time.Since(input.StartedAt), FirstTokenMs: firstToken}
+			Stream: input.Stream, Duration: time.Since(input.StartedAt), FirstTokenMs: firstToken,
+		}
 		if imageCount > 0 {
 			result.ImageCount = imageCount
 			result.ImageSize = input.ImageSizeTier

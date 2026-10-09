@@ -28,9 +28,8 @@ import (
 )
 
 func (p *OpenAIResponseOutput) chatBufferedFailure(c *gin.Context, account *gatewayprovider.ExecutionAccount, resp *http.Response, requestID, upstreamModel string, finalResponse *wire.ResponsesResponse, usage wire.ForwardUsage) error {
-
 	payload, _ := json.Marshal(map[string]any{"type": "response.failed", "response": finalResponse})
-	if hit, code, msg := openai.DetectOpenAICyberPolicy(payload); hit {
+	if hit, code, msg := openai.DetectOpenAISafetyTerminal(payload); hit {
 		MarkOpsCyberPolicy(c, moderationflow.Mark{
 			Code:           code,
 			Message:        msg,
@@ -39,12 +38,9 @@ func (p *OpenAIResponseOutput) chatBufferedFailure(c *gin.Context, account *gate
 			UpstreamInTok:  usage.InputTokens,
 			UpstreamOutTok: usage.OutputTokens,
 		})
-		clientMsg := msg
-		if clientMsg == "" {
-			clientMsg = "Request blocked by upstream cyber-security policy"
-		}
-		WriteForwardChatError(c, http.StatusBadRequest, "invalid_request_error", clientMsg)
-		return fmt.Errorf("openai cyber_policy: %s", msg)
+		MarkResponseCommitted(c)
+		DefaultOpenAIErrorOutput().WriteStreamingErrorWithCode(c, http.StatusForbidden, openai.OpenAISafetyTerminalType(code), code, msg, c.Writer.Written(), false)
+		return fmt.Errorf("openai safety refusal: %s", code)
 	}
 	message := openAICompatFailedResponseMessage(finalResponse)
 	policyStatus, decision := p.ApplyStreamFailurePolicy(
@@ -76,7 +72,6 @@ func (p *OpenAIResponseOutput) chatBufferedFailure(c *gin.Context, account *gate
 	}
 	WriteForwardChatError(c, http.StatusBadGateway, "upstream_error", message)
 	return fmt.Errorf("upstream response failed: %s", message)
-
 }
 
 func (p *OpenAIResponseOutput) chatStreamFailure(c *gin.Context, account *gatewayprovider.ExecutionAccount, resp *http.Response, requestID, upstreamModel string, payloadBytes []byte, message string, clientOutputStarted bool) openai.ChatFailure {
@@ -109,7 +104,6 @@ func (p *OpenAIResponseOutput) chatStreamFailure(c *gin.Context, account *gatewa
 		MarkResponseCommitted(c)
 	}
 	return openai.ChatFailure{Status: defaultStatus, Type: defaultErrType, Message: defaultMsg}
-
 }
 
 func (p *OpenAIResponseOutput) ChatOptions(c *gin.Context, account *gatewayprovider.ExecutionAccount, resp *http.Response, originalModel, billingModel, upstreamModel string) openai.ChatResponseOptions {

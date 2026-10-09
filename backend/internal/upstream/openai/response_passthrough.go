@@ -58,6 +58,7 @@ func ReadPassthroughStreaming(ctx context.Context, resp *http.Response, c *upstr
 	sawDone := false
 	sawTerminalEvent := false
 	sawFailedEvent := false
+	safetyTerminalCode := ""
 	sawBareError := false
 	sawResponseFailed := false
 	terminalEventType := ""
@@ -247,8 +248,14 @@ func ReadPassthroughStreaming(ctx context.Context, resp *http.Response, c *upstr
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
 				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
 				wire.ParseSSEUsageBytesWithType(dataBytes, eventType, usage)
-				if hit, code, msg := DetectOpenAICyberPolicy(dataBytes); hit {
+				if hit, code, msg := DetectOpenAISafetyTerminal(dataBytes); hit {
 					cyberHit = true
+					safetyTerminalCode = code
+					failedMessage = msg
+					codexFailureTerminal = false
+					sawBareError = false
+					suppressCurrentEvent = false
+					responseFailedPending = true
 					options.MarkCyber(CyberObservation{
 						Code:           code,
 						Message:        msg,
@@ -403,6 +410,10 @@ func ReadPassthroughStreaming(ctx context.Context, resp *http.Response, c *upstr
 		if line == "" && responseFailedPending {
 			responseFailedPending = false
 			failureDelivered = true
+			if safetyTerminalCode != "" {
+				_ = resp.Body.Close()
+				return resultWithUsage(), fmt.Errorf("openai safety refusal: %s", safetyTerminalCode)
+			}
 		}
 	}
 	ensureResponseFailedTerminal()
@@ -468,6 +479,9 @@ func ReadPassthroughNonStreaming(ctx context.Context, resp *http.Response, sink 
 	if err != nil {
 		return nil, err
 	}
+	if refusal := FindOpenAISafetyTerminal(body); refusal != nil {
+		return nil, options.NonStream.FailedTerminal(resp, mappedModel, refusal, OpenAISafetyTerminalMessage)
+	}
 
 	if IsEventStreamResponse(resp.Header) {
 		options.NonStream.ObserveSSE(string(body))
@@ -484,7 +498,6 @@ func ReadPassthroughNonStreaming(ctx context.Context, resp *http.Response, sink 
 		}
 	}
 	if !usageParsed {
-
 		usage = wire.ParseSSEUsageFromBody(string(body))
 	}
 	options.MissingUsage(resp, usage, "json", false)
@@ -512,7 +525,6 @@ func ReadPassthroughNonStreaming(ctx context.Context, resp *http.Response, sink 
 		c.Data(resp.StatusCode, contentType, body)
 	}
 	return &NonStreamingResult{
-
 		Usage:            usage,
 		ResponseID:       wire.ExtractOpenAIResponseIDFromJSONBytes(body),
 		ImageCount:       wire.CountOpenAIResponseImageOutputsFromJSONBytes(body),
@@ -522,6 +534,9 @@ func ReadPassthroughNonStreaming(ctx context.Context, resp *http.Response, sink 
 
 // ReadPassthroughSSEAsJSON 保留透传报文、失败与刷新边界，核心不持有入站上下文。
 func ReadPassthroughSSEAsJSON(resp *http.Response, sink upstream.OutputSink, options PassthroughOptions, body []byte, originalModel, mappedModel string) (*NonStreamingResult, error) {
+	if refusal := FindOpenAISafetyTerminal(body); refusal != nil {
+		return nil, options.NonStream.FailedTerminal(resp, mappedModel, refusal, OpenAISafetyTerminalMessage)
+	}
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := wire.ExtractOpenAISSETerminalEvent(bodyText)
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
@@ -592,7 +607,6 @@ func ReadPassthroughSSEAsJSON(resp *http.Response, sink upstream.OutputSink, opt
 	}
 
 	return &NonStreamingResult{
-
 		Usage:            usage,
 		ResponseID:       wire.ExtractOpenAIResponseIDFromJSONBytes(body),
 		ImageCount:       wire.CountOpenAIImageOutputsFromSSEBody(bodyText),

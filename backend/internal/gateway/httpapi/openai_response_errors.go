@@ -1,14 +1,14 @@
 package httpapi
 
 import (
-	"github.com/TokenFlux/TokenRouter/internal/gateway/moderationflow"
-	"github.com/TokenFlux/TokenRouter/internal/gateway/requeststate"
-
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/TokenFlux/TokenRouter/internal/gateway/moderationflow"
+	"github.com/TokenFlux/TokenRouter/internal/gateway/requeststate"
 
 	accountcore "github.com/TokenFlux/TokenRouter/internal/account"
 
@@ -146,7 +146,7 @@ func (p *OpenAIResponseOutput) ResponseError(
 	body := p.ReadErrorBody(resp)
 	body = p.redact(ctx, account, body)
 
-	if hit, code, cyberMsg := openai.DetectOpenAICyberPolicy(body); hit {
+	if hit, code, cyberMsg := openai.DetectOpenAISafetyTerminal(body); hit {
 		MarkOpsCyberPolicy(c, moderationflow.Mark{
 			Code:           code,
 			Message:        cyberMsg,
@@ -155,16 +155,9 @@ func (p *OpenAIResponseOutput) ResponseError(
 		})
 		SetOpsUpstreamError(c, resp.StatusCode, cyberMsg, logredact.TruncateUTF8(string(body), 2048))
 		WriteOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, p.Headers)
-		contentType := resp.Header.Get("Content-Type")
-		if contentType == "" {
-			contentType = "application/json"
-		}
 		MarkResponseCommitted(c)
-		c.Data(resp.StatusCode, contentType, body)
-		if cyberMsg == "" {
-			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
-		}
-		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+		DefaultOpenAIErrorOutput().WriteStreamingErrorWithCode(c, http.StatusForbidden, openai.OpenAISafetyTerminalType(code), code, cyberMsg, c.Writer.Written(), false)
+		return nil, fmt.Errorf("openai safety refusal: %s", code)
 	}
 	if account != nil && account.Record.Platform == capability.PlatformGrok && grok.IsGrokContentPolicyRejection(resp.StatusCode, body) {
 		clientMsg := gatewayprovider.GrokContentPolicyClientMessage(body)
@@ -433,7 +426,7 @@ func (p *OpenAIResponseOutput) CompatError(
 	body := p.ReadErrorBody(resp)
 	body = p.redact(context.Background(), account, body)
 
-	if hit, code, cyberMsg := openai.DetectOpenAICyberPolicy(body); hit {
+	if hit, code, cyberMsg := openai.DetectOpenAISafetyTerminal(body); hit {
 		MarkOpsCyberPolicy(c, moderationflow.Mark{
 			Code:           code,
 			Message:        cyberMsg,
@@ -441,16 +434,9 @@ func (p *OpenAIResponseOutput) CompatError(
 			UpstreamStatus: resp.StatusCode,
 		})
 		SetOpsUpstreamError(c, resp.StatusCode, cyberMsg, logredact.TruncateUTF8(string(body), 2048))
-		clientMsg := cyberMsg
-		if clientMsg == "" {
-			clientMsg = "Request blocked by upstream cyber-security policy"
-		}
 		MarkResponseCommitted(c)
-		writeError(c, resp.StatusCode, "invalid_request_error", clientMsg)
-		if cyberMsg == "" {
-			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
-		}
-		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+		DefaultOpenAIErrorOutput().WriteStreamingErrorWithCode(c, http.StatusForbidden, openai.OpenAISafetyTerminalType(code), code, cyberMsg, c.Writer.Written(), false)
+		return nil, fmt.Errorf("openai safety refusal: %s", code)
 	}
 	if account != nil && account.Record.Platform == capability.PlatformGrok && grok.IsGrokContentPolicyRejection(resp.StatusCode, body) {
 		clientMsg := gatewayprovider.GrokContentPolicyClientMessage(body)

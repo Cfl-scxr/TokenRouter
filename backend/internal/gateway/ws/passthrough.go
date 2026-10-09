@@ -13,6 +13,7 @@ import (
 
 	wire "github.com/TokenFlux/TokenRouter/internal/protocol/openai"
 	"github.com/TokenFlux/TokenRouter/internal/scheduler"
+	"github.com/TokenFlux/TokenRouter/internal/upstream/openai"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -191,6 +192,12 @@ func (s *PassthroughSession) Run(ctx context.Context, clientConn ClientSocket, f
 		}
 		if dialErr == nil {
 			break
+		}
+		if hit, code, _ := openai.DetectOpenAISafetyTerminal(dialResult.Body); hit {
+			writeCtx, cancel := context.WithTimeout(ctx, o.WriteTimeout)
+			defer cancel()
+			_ = clientConn.Write(writeCtx, TextFrame, openai.SafetyTerminalPayload(code, true))
+			return p.CloseError(1008, openai.OpenAISafetyTerminalMessage, fmt.Errorf("openai safety refusal: %s", code))
 		}
 		if p.CanRecover(ctx, dialResult, dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
@@ -622,6 +629,16 @@ func (s *PassthroughSession) Run(ctx context.Context, clientConn ClientSocket, f
 				if msgType != TextFrame {
 					return nil
 				}
+				if hit, code, _ := openai.DetectOpenAISafetyTerminal(payload); hit {
+					// 保留原有风控证据，拒绝不进入重试或账号健康处置。
+					_ = p.BeforeWrite(ctx, "", payload, wroteDownstream, handshakeHeaders)
+					writeCtx, cancel := context.WithTimeout(ctx, o.WriteTimeout)
+					defer cancel()
+					if err := clientConn.Write(writeCtx, TextFrame, openai.SafetyTerminalPayload(code, true)); err != nil {
+						return err
+					}
+					return p.CloseError(1008, openai.OpenAISafetyTerminalMessage, fmt.Errorf("openai safety refusal: %s", code))
+				}
 				turnPayload := turnPayloads.Peek()
 				routingModel := strings.TrimSpace(turnPayload.RoutingModel)
 				if routingModel == "" {
@@ -772,6 +789,7 @@ func (s *PassthroughSession) Run(ctx context.Context, clientConn ClientSocket, f
 	}
 	return turnErr
 }
+
 func replaceRequestModel(payload []byte, eventType, model string, closeError func(int, string, error) error) ([]byte, error) {
 	path := "model"
 	if eventType == "session.update" {
@@ -783,6 +801,7 @@ func replaceRequestModel(payload []byte, eventType, model string, closeError fun
 	}
 	return out, nil
 }
+
 func cloneHeaders(headers map[string][]string) map[string][]string {
 	if headers == nil {
 		return nil
@@ -793,12 +812,14 @@ func cloneHeaders(headers map[string][]string) map[string][]string {
 	}
 	return out
 }
+
 func firstTokenForLog(value *int) int {
 	if value == nil {
 		return -1
 	}
 	return *value
 }
+
 func errorText(err error) string {
 	if err == nil {
 		return ""

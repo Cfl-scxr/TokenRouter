@@ -238,7 +238,6 @@ func RunMessages(ctx context.Context, body []byte, promptCacheKey, defaultMapped
 	if profile.Platform == "openai" {
 		policyBody, changed, policyErr := p.ApplyEffort(ctx, responsesBody)
 		if policyErr != nil {
-
 			return nil, policyErr
 		}
 		if changed {
@@ -253,7 +252,6 @@ func RunMessages(ctx context.Context, body []byte, promptCacheKey, defaultMapped
 	// 按请求体 service_tier 应用与 Claude fast-mode beta 对应的过滤语义。
 	updatedBody, policyErr := p.ApplyFast(ctx, upstreamModel, responsesBody)
 	if policyErr != nil {
-
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
@@ -383,6 +381,10 @@ func RunMessages(ctx context.Context, body []byte, promptCacheKey, defaultMapped
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, _ := p.ReadUpstreamError(resp)
+		if hit, _, _ := openai.DetectOpenAISafetyTerminal(respBody); hit {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			return p.ErrorResponse(resp, billingModel)
+		}
 		if !p.AgentRecoveryTried(ctx) && p.IsAgentIdentity(ctx) && p.InvalidAgentTask(resp.StatusCode, respBody) {
 			if err := p.RecoverAgentTask(ctx); err != nil {
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", err)

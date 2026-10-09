@@ -9,6 +9,7 @@ import (
 	"time"
 
 	wire "github.com/TokenFlux/TokenRouter/internal/protocol/openai"
+	"github.com/TokenFlux/TokenRouter/internal/upstream/openai"
 )
 
 // RelayTurn 保留 ctx_pool 单轮输出、usage、TTFT 和错误边界，不把 retry 循环放进平台 Adapter。
@@ -99,6 +100,13 @@ func RelayTurn(ctx context.Context, p StreamPort, lease StreamLease, input Clien
 		}
 		if eventType == "error" || eventType == "response.failed" {
 			p.MarkCyber(upstreamMessage, &usage)
+		}
+		if hit, code, _ := openai.DetectOpenAISafetyTerminal(upstreamMessage); hit {
+			lease.MarkBroken()
+			if err := p.WriteClient(openai.SafetyTerminalPayload(code, true)); err != nil {
+				return nil, WrapIngressTurnError("write_client", err, true)
+			}
+			return nil, WrapIngressTurnError("safety_terminal", fmt.Errorf("openai safety refusal: %s", code), true)
 		}
 		if eventType == "error" {
 			canonicalModel := p.SchedulingModel(routingModel)

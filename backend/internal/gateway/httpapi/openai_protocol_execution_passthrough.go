@@ -1,16 +1,15 @@
 package httpapi
 
 import (
-	gatewayprovider "github.com/TokenFlux/TokenRouter/internal/gateway/provider"
-	openaiexecution "github.com/TokenFlux/TokenRouter/internal/gateway/provider/openaiforward"
-
 	"context"
-
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
+
+	gatewayprovider "github.com/TokenFlux/TokenRouter/internal/gateway/provider"
+	openaiexecution "github.com/TokenFlux/TokenRouter/internal/gateway/provider/openaiforward"
 
 	"github.com/TokenFlux/TokenRouter/internal/egress"
 
@@ -36,6 +35,7 @@ func (s *OpenAITextExecutor) Passthrough(ctx context.Context, c *gin.Context, ac
 	result, err := openaiexecution.RunPassthrough(ctx, input, p)
 	return openaiexecution.ToForwardResult(result), err
 }
+
 func logOpenAIPassthroughInstructionsRejected(
 	ctx context.Context,
 	c *gin.Context,
@@ -71,7 +71,7 @@ func logOpenAIPassthroughInstructionsRejected(
 func shouldFailoverOpenAIPassthroughResponse(account *gatewayprovider.ExecutionAccount, status int, body []byte) bool {
 	return openaiexecution.ShouldFailoverPassthrough(status, body, openaiexecution.PassthroughFailureOptions{
 		APIKey:        account != nil && account.Record.Type == capability.AccountTypeAPIKey,
-		Cyber:         func(b []byte) bool { hit, _, _ := openai.DetectOpenAICyberPolicy(b); return hit },
+		Cyber:         func(b []byte) bool { hit, _, _ := openai.DetectOpenAISafetyTerminal(b); return hit },
 		ContextWindow: func(b []byte) bool { return openai.IsOpenAIContextWindowError("", b) },
 		AccessState:   func(s int, b []byte) bool { return gatewayprovider.IsOpenAIHTTPUpstreamAccessStateError(s, "", b) },
 		BodyTooLarge:  func(s int, b []byte) bool { return gatewayprovider.IsOpenAIRequestBodyTooLargeError(s, "", b) },
@@ -80,6 +80,7 @@ func shouldFailoverOpenAIPassthroughResponse(account *gatewayprovider.ExecutionA
 		},
 	})
 }
+
 func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 	if h == nil {
 		return nil

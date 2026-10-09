@@ -22,6 +22,12 @@ import (
 )
 
 func (p *OpenAIResponseOutput) failedResponseTerminal(ctx context.Context, c *gin.Context, account *gatewayprovider.ExecutionAccount, resp *http.Response, mappedModel string, terminalPayload []byte, msg string) error {
+	if hit, code, message := openai.DetectOpenAISafetyTerminal(terminalPayload); hit {
+		MarkOpenAICyberPolicyEvent(c, terminalPayload, resp.StatusCode, nil)
+		MarkResponseCommitted(c)
+		DefaultOpenAIErrorOutput().WriteStreamingErrorWithCode(c, http.StatusForbidden, openai.OpenAISafetyTerminalType(code), code, message, c.Writer.Written(), false)
+		return fmt.Errorf("openai safety refusal: %s", code)
+	}
 	policyStatus, decision := p.ApplyStreamFailurePolicy(
 		ctx, account, mappedModel, resp.Header, terminalPayload, msg,
 	)

@@ -617,6 +617,13 @@ func (s *OpenAIWebSocketExecutor) proxyOpenAIWSHTTPBridgeTurn(
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
 		_ = resp.Body.Close()
 		MarkOpenAICyberPolicyEvent(c, respBody, resp.StatusCode, nil)
+		if hit, code, _ := upstreamopenai.DetectOpenAISafetyTerminal(respBody); hit {
+			clientError := upstreamopenai.SafetyTerminalPayload(code, true)
+			if writeErr := writeClientMessage(clientError); writeErr == nil {
+				markOpenAIWSClientVisibleFailure(c, "response.failed", clientError)
+			}
+			return nil, fmt.Errorf("openai safety refusal: %s", code)
+		}
 		if resp.StatusCode == http.StatusBadRequest &&
 			upstream.ExtractErrorCode(respBody) == OpenAIInvalidEncryptedContentReason {
 			s.Lineage.MarkPayload(
@@ -835,6 +842,13 @@ func (s *OpenAIWebSocketExecutor) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		if eventType == "error" || eventType == "response.failed" {
 			MarkOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
+		}
+		if hit, code, _ := upstreamopenai.DetectOpenAISafetyTerminal(upstreamMessage); hit {
+			clientError := upstreamopenai.SafetyTerminalPayload(code, true)
+			if writeErr := writeClientMessage(clientError); writeErr == nil {
+				markOpenAIWSClientVisibleFailure(c, "response.failed", clientError)
+			}
+			return nil, fmt.Errorf("openai safety refusal: %s", code)
 		}
 		imageCounter.AddSSEData(upstreamMessage)
 
