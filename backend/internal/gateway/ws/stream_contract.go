@@ -50,6 +50,7 @@ type ReplayCollector interface {
 
 // StreamPort 只提供单次 wire/账号规则投影和输出；帧循环与重试窗口由 RelayTurn 控制。
 type StreamPort interface {
+	SafetyRefusal([]byte) *SafetyRefusal
 	BeginObservation()
 	ObserveModel([]byte, string)
 	ResponseTier() string

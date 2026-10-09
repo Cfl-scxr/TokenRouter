@@ -41,19 +41,36 @@ type wsPassthroughAdapter struct {
 	proxyURL string
 }
 
+// SafetyRefusal 在平台边界识别明确拒绝，避免帧编排反向依赖供应商实现。
+func (*wsPassthroughAdapter) SafetyRefusal(body []byte) *gatewayws.SafetyRefusal {
+	hit, code, _ := openai.DetectOpenAISafetyTerminal(body)
+	if !hit {
+		return nil
+	}
+	return &gatewayws.SafetyRefusal{
+		Code:    code,
+		Message: openai.OpenAISafetyTerminalMessage,
+		Payload: openai.SafetyTerminalPayload(code, true),
+	}
+}
+
 func (p *wsPassthroughAdapter) IsLite(body []byte) bool {
 	return gatewayprovider.ImageIntent().IsOpenAIResponsesLiteWebSocketPayload(body)
 }
+
 func (p *wsPassthroughAdapter) NormalizeLite(body []byte) ([]byte, error) {
 	value, _, err := gatewayprovider.NormalizeResponsesLiteForAccount(p.account.View(), body)
 	return value, err
 }
+
 func (p *wsPassthroughAdapter) Reasoning(body []byte, model string) ([]byte, error) {
 	return gatewayws.ApplyReasoningEffortPolicy(body, p.hooks, model)
 }
+
 func (p *wsPassthroughAdapter) Models(turn int, model string, body []byte) (string, string, error) {
 	return resolveOpenAIWSTurnModels(p.account, p.hooks, turn, model, body)
 }
+
 func (p *wsPassthroughAdapter) AliasTools(body []byte) ([]byte, error) {
 	out, reverse, changed, err := openai.AliasOpenAIOAuthReservedToolNamesBody(body)
 	if err != nil {
@@ -65,12 +82,15 @@ func (p *wsPassthroughAdapter) AliasTools(body []byte) ([]byte, error) {
 	}
 	return body, nil
 }
+
 func (p *wsPassthroughAdapter) Compatibility(body []byte, lite bool) ([]byte, bool, error) {
 	return gatewayprovider.NormalizeOpenAIResponsesWebSocketCompatibilityBody(body, gatewayprovider.ExecutionProtocolRecord(p.account), lite)
 }
+
 func (p *wsPassthroughAdapter) ScopeIdentity(body []byte) ([]byte, bool, error) {
 	return openai.ApplyCodexAccountIdentityClientMetadataRaw(body, accountprovider.CodexIdentityNamespace(CodexIdentityRecord(p.request, p.account.View())), APIKeyIDFromContext(p.request))
 }
+
 func (p *wsPassthroughAdapter) FastPolicy(ctx context.Context, turn int, model string, body []byte, scoped bool) ([]byte, *gatewayws.PolicyBlocked, error) {
 	if scoped {
 		ctx = openAIWSFastModePolicyContext(ctx, p.hooks, turn)
@@ -81,21 +101,26 @@ func (p *wsPassthroughAdapter) FastPolicy(ctx context.Context, turn int, model s
 	}
 	return out, &gatewayws.PolicyBlocked{Message: blocked.Message, Cause: blocked}, err
 }
+
 func (p *wsPassthroughAdapter) PromptReplace(ctx context.Context, body []byte) []byte {
 	if p.service == nil {
 		return body
 	}
 	return p.service.Prompts.ApplyUserPromptReplacementToBody(ctx, body, "openai_responses")
 }
+
 func (p *wsPassthroughAdapter) BlockedEvent(blocked *gatewayws.PolicyBlocked) []byte {
 	return gatewayws.BuildFastPolicyBlockedEvent(&tierpolicy.BlockedError{Message: blocked.Message})
 }
+
 func (p *wsPassthroughAdapter) PolicyDenied() {
 	MarkOpsClientBusinessLimited(p.request, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 }
+
 func (p *wsPassthroughAdapter) SetUpstreamModel(model string) {
 	SetOpsUpstreamModel(p.request, model)
 }
+
 func (p *wsPassthroughAdapter) PrepareDial(ctx context.Context, body []byte, promptCacheKey string) error {
 	wsURL, err := p.service.buildOpenAIResponsesWSURL(p.account)
 	if err != nil {
@@ -160,6 +185,7 @@ func (p *wsPassthroughAdapter) PrepareDial(ctx context.Context, body []byte, pro
 	p.proxyURL = proxyURL
 	return nil
 }
+
 func (p *wsPassthroughAdapter) DialOnce(ctx context.Context) (gatewayws.DialResult, error) {
 	headers, err := p.service.Requests.Identity.RefreshHeaders(ctx, p.account, p.headers)
 	if err != nil {
@@ -186,13 +212,16 @@ func (p *wsPassthroughAdapter) DialOnce(ctx context.Context) (gatewayws.DialResu
 	logOpenAIWSV2Passthrough("relay_dial_ok account_id=%d status_code=%d upstream_request_id=%s", p.account.Record.ID, status, gatewayprovider.OpenAIWSHeaderValueForLog(handshake, "x-request-id"))
 	return result, nil
 }
+
 func (p *wsPassthroughAdapter) CanRecover(ctx context.Context, result gatewayws.DialResult, err error) bool {
 	failure := &openai.WSDialError{StatusCode: result.Status, ResponseHeaders: result.Headers, ResponseBody: result.Body, Err: err}
 	return p.service.Requests.Identity.UsesAgentIdentity(ctx, p.account) && openai.IsAgentTaskInvalidWSDialError(failure)
 }
+
 func (p *wsPassthroughAdapter) Recover(ctx context.Context) error {
 	return p.service.Requests.Identity.Recover(ctx, p.account, p.account.View().GetCredential("task_id"))
 }
+
 func (p *wsPassthroughAdapter) DialFailure(ctx context.Context, model string, result gatewayws.DialResult, err error) error {
 	logOpenAIWSV2Passthrough("relay_dial_failed account_id=%d status_code=%d err=%s", p.account.Record.ID, result.Status, gatewayprovider.TruncateOpenAIWSLogValue(err.Error(), gatewayprovider.OpenAIWSLogValueMaxLen))
 	failure := &openai.WSDialError{StatusCode: result.Status, ResponseHeaders: upstreamcore.CloneHeader(result.Headers), ResponseBody: result.Body, Err: err}
@@ -205,31 +234,40 @@ func (p *wsPassthroughAdapter) DialFailure(ctx context.Context, model string, re
 	}
 	return p.service.mapOpenAIWSPassthroughDialError(err, result.Status, result.Headers)
 }
+
 func (p *wsPassthroughAdapter) NormalizeCompleted(body []byte) ([]byte, bool) {
 	return openaicore.NormalizeCompletedImageGenerationStatus(body)
 }
+
 func (p *wsPassthroughAdapter) RestoreTools(body []byte) []byte {
 	return RestoreCodexToolNamesFromContext(p.request, body)
 }
+
 func (p *wsPassthroughAdapter) EventType(body []byte) string {
 	event, _, _ := openaicore.ParseWSEventEnvelope(body)
 	return event
 }
+
 func (p *wsPassthroughAdapter) MayContainModel(event string) bool {
 	return openaicore.WSEventMayContainModel(event)
 }
+
 func (p *wsPassthroughAdapter) ReplaceModel(body []byte, upstream, requested string) []byte {
 	return openaicore.ReplaceWSMessageModel(body, upstream, requested)
 }
+
 func (p *wsPassthroughAdapter) IsTerminal(event string) bool {
 	return openaicore.IsWSTerminalEvent(event)
 }
+
 func (p *wsPassthroughAdapter) NormalizeTerminal(event string) string {
 	return normalizeOpenAIWSTerminalEvent(event)
 }
+
 func (p *wsPassthroughAdapter) NormalizeTier(tier string) string {
 	return forwardcore.NormalizeObservedOpenAIServiceTier(tier)
 }
+
 func (p *wsPassthroughAdapter) Warning(event string, body []byte) *forwardcore.UpstreamWarning {
 	warning := buildOpenAIWSUpstreamWarning(event, body)
 	if warning == nil {
@@ -237,6 +275,7 @@ func (p *wsPassthroughAdapter) Warning(event string, body []byte) *forwardcore.U
 	}
 	return &forwardcore.UpstreamWarning{StatusCode: warning.StatusCode, Message: warning.Message, ResponseBody: warning.ResponseBody}
 }
+
 func (p *wsPassthroughAdapter) BeforeWrite(ctx context.Context, routingModel string, payload []byte, wroteDownstream bool, rawHeaders map[string][]string) error {
 	handshakeHeaders := http.Header(rawHeaders)
 	eventType, _, _ := openaicore.ParseWSEventEnvelope(payload)
@@ -297,16 +336,20 @@ func (p *wsPassthroughAdapter) BeforeWrite(ctx context.Context, routingModel str
 	}
 	return nil
 }
+
 func (p *wsPassthroughAdapter) RelayClose(exit gatewayws.RelayExit, completed int) (int, string, bool) {
 	status, reason, ok := openAIWSPassthroughRelayClientClose(openaiwsv2.RelayExit{Stage: exit.Stage, Err: exit.Err, Graceful: exit.Graceful, WroteDownstream: exit.WroteDownstream}, completed)
 	return int(status), reason, ok
 }
+
 func (p *wsPassthroughAdapter) CloseError(status int, reason string, err error) error {
 	return NewOpenAIWSClientCloseError(coderws.StatusCode(status), reason, err)
 }
+
 func (p *wsPassthroughAdapter) FirstOutputFailure(ctx context.Context, d gatewayws.Deadline, headers map[string][]string) error {
 	return p.service.Output.FirstOutputFailure(ctx, p.request, p.account, d.StartedAt, d.RequestModel, d.ReasoningEffort, d.Timeout, "websocket_first_semantic_output", headers)
 }
+
 func (p *wsPassthroughAdapter) FirstOutputTimeout(effort string) time.Duration {
 	return p.service.Output.FirstOutputTimeout(effort)
 }

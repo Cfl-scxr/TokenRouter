@@ -22,6 +22,13 @@ type PolicyBlocked struct {
 func (e *PolicyBlocked) Error() string { return e.Message }
 func (e *PolicyBlocked) Unwrap() error { return e.Cause }
 
+// SafetyRefusal 是平台适配器提供的脱敏拒绝投影，核心只负责终止当前请求。
+type SafetyRefusal struct {
+	Code    string
+	Message string
+	Payload []byte
+}
+
 // DialResult 保存单次拨号观测，不向核心暴露底层客户端或认证参数。
 type DialResult struct {
 	PreparationError bool
@@ -40,6 +47,7 @@ type PassthroughHooks struct {
 
 // PassthroughPort 的每个方法至多执行一次平台原语，重试和 turn 编排在核心。
 type PassthroughPort interface {
+	SafetyRefusal([]byte) *SafetyRefusal
 	UsageDecoder
 	IsLite([]byte) bool
 	NormalizeLite([]byte) ([]byte, error)

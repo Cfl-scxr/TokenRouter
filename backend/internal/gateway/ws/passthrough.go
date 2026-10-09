@@ -13,7 +13,6 @@ import (
 
 	wire "github.com/TokenFlux/TokenRouter/internal/protocol/openai"
 	"github.com/TokenFlux/TokenRouter/internal/scheduler"
-	"github.com/TokenFlux/TokenRouter/internal/upstream/openai"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -193,11 +192,11 @@ func (s *PassthroughSession) Run(ctx context.Context, clientConn ClientSocket, f
 		if dialErr == nil {
 			break
 		}
-		if hit, code, _ := openai.DetectOpenAISafetyTerminal(dialResult.Body); hit {
+		if refusal := p.SafetyRefusal(dialResult.Body); refusal != nil {
 			writeCtx, cancel := context.WithTimeout(ctx, o.WriteTimeout)
 			defer cancel()
-			_ = clientConn.Write(writeCtx, TextFrame, openai.SafetyTerminalPayload(code, true))
-			return p.CloseError(1008, openai.OpenAISafetyTerminalMessage, fmt.Errorf("openai safety refusal: %s", code))
+			_ = clientConn.Write(writeCtx, TextFrame, refusal.Payload)
+			return p.CloseError(1008, refusal.Message, fmt.Errorf("openai safety refusal: %s", refusal.Code))
 		}
 		if p.CanRecover(ctx, dialResult, dialErr) && !agentTaskRecoveryTried {
 			agentTaskRecoveryTried = true
@@ -629,15 +628,15 @@ func (s *PassthroughSession) Run(ctx context.Context, clientConn ClientSocket, f
 				if msgType != TextFrame {
 					return nil
 				}
-				if hit, code, _ := openai.DetectOpenAISafetyTerminal(payload); hit {
+				if refusal := p.SafetyRefusal(payload); refusal != nil {
 					// 保留原有风控证据，拒绝不进入重试或账号健康处置。
 					_ = p.BeforeWrite(ctx, "", payload, wroteDownstream, handshakeHeaders)
 					writeCtx, cancel := context.WithTimeout(ctx, o.WriteTimeout)
 					defer cancel()
-					if err := clientConn.Write(writeCtx, TextFrame, openai.SafetyTerminalPayload(code, true)); err != nil {
+					if err := clientConn.Write(writeCtx, TextFrame, refusal.Payload); err != nil {
 						return err
 					}
-					return p.CloseError(1008, openai.OpenAISafetyTerminalMessage, fmt.Errorf("openai safety refusal: %s", code))
+					return p.CloseError(1008, refusal.Message, fmt.Errorf("openai safety refusal: %s", refusal.Code))
 				}
 				turnPayload := turnPayloads.Peek()
 				routingModel := strings.TrimSpace(turnPayload.RoutingModel)
