@@ -47,7 +47,7 @@ type responsesAttemptBridge struct {
 	accountReleaseFunc                                                       func()
 	result                                                                   *forwardcore.OpenAIResult
 	writerSizeBeforeForward                                                  int
-	cyberPolicyHandled, wroteFallback                                        bool
+	cyberPolicyHandled, wroteFallback, callerCanceled                        bool
 	passthroughFailoverState                                                 openAIPassthroughFailoverState
 	fields                                                                   []zap.Field
 }
@@ -211,7 +211,6 @@ func (b *responsesAttemptBridge) Forward() textflow.ResponseOutcome {
 		out.FirstOutputRecovery = retry.SafeToFailoverAfterWrite
 	}
 	return out
-
 }
 
 // Complete 只执行单次 Responses 适配操作，不持有重试循环。
@@ -335,6 +334,11 @@ func (b *responsesAttemptBridge) Switching(failure *textflow.AttemptFailure, swi
 
 // OtherFailure 只执行单次 Responses 适配操作，不持有重试循环。
 func (b *responsesAttemptBridge) OtherFailure(err error) {
+	// 取消不补写通用 502，也不提交失败的账号健康样本。
+	if errors.Is(err, context.Canceled) && gatewayhttp.FailoverClientGone(b.c) {
+		b.callerCanceled = true
+		return
+	}
 	statusCode := 0
 	if v, ok := GetContextInt64(b.c, gatewayhttp.OpsUpstreamStatusCodeKey); ok {
 		statusCode = int(v)
@@ -361,6 +365,10 @@ func (b *responsesAttemptBridge) OtherFailure(err error) {
 
 // Failed 只执行单次 Responses 适配操作，不持有重试循环。
 func (b *responsesAttemptBridge) Failed() {
+	if b.callerCanceled {
+		b.reqLog.Info("openai.client_canceled")
+		return
+	}
 	if gatewayhttp.ShouldLogOpenAIForwardFailureAsWarn(b.c, b.wroteFallback) {
 		b.reqLog.Warn("openai.forward_failed", b.fields...)
 		return
@@ -379,7 +387,6 @@ func (b *responsesAttemptBridge) Success() {
 	} else {
 		b.binding().reportOpenAIAccountScheduleResult(b.account, OpenAIAccountScheduleModel(b.c, b.account, b.forwardModel, b.requireCompact, b.result), b.result.SucceededForScheduling(), nil)
 	}
-
 }
 
 // Completed 只执行单次 Responses 适配操作，不持有重试循环。
@@ -392,9 +399,11 @@ func (b *responsesAttemptBridge) Completed(switchCount int) {
 
 func (b *responsesAttemptBridge) Context() context.Context { return b.c.Request.Context() }
 func (b *responsesAttemptBridge) CanAttempt() bool         { return OpenAIRequestAllowsFailoverReplay(b.c) }
+
 func (b *responsesAttemptBridge) selectedView() textflow.ResponseSelection {
 	return textflow.ResponseSelection{Selection: gatewaycapture.CaptureTextSelection(b.account), Available: true, OAuth: failover.OAuth429Account{OpenAI: b.account.View().IsOpenAIOAuthLike(), Grok: b.account.Record.Platform == capability.PlatformGrok && b.account.Record.Type == capability.AccountTypeOAuth}}
 }
+
 func (b *responsesAttemptBridge) Exhausted(failure *textflow.AttemptFailure) {
 	var original *forwardcore.UpstreamFailoverError
 	if failure != nil && errors.As(failure.Cause, &original) {
@@ -403,6 +412,7 @@ func (b *responsesAttemptBridge) Exhausted(failure *textflow.AttemptFailure) {
 		b.binding().handleFailoverExhaustedSimple(b.c, 502, *b.streamStarted)
 	}
 }
+
 func (b *responsesAttemptBridge) Switched() {
 	b.binding().recordOpenAIAccountSwitchForSelection(b.selection)
 }

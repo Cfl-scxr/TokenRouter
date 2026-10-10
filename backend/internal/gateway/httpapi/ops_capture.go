@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"github.com/TokenFlux/TokenRouter/internal/pkg/logredact"
-
 	"bufio"
 	"bytes"
 	"context"
@@ -14,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/TokenFlux/TokenRouter/internal/pkg/logredact"
 
 	"github.com/TokenFlux/TokenRouter/internal/apikey"
 	"github.com/TokenFlux/TokenRouter/internal/infra/telemetry"
@@ -363,6 +363,7 @@ func (w *opsCaptureWriter) Header() http.Header {
 	defer state.mu.RUnlock()
 	return rw.Header()
 }
+
 func (w *opsCaptureWriter) WriteHeader(code int) {
 	state, rw := w.beginDelegatedCall()
 	if state == nil {
@@ -372,6 +373,7 @@ func (w *opsCaptureWriter) WriteHeader(code int) {
 	defer finishDelegatedCall(state)
 	rw.WriteHeader(code)
 }
+
 func (w *opsCaptureWriter) WriteHeaderNow() {
 	state, rw := w.beginDelegatedCall()
 	if state == nil {
@@ -381,6 +383,7 @@ func (w *opsCaptureWriter) WriteHeaderNow() {
 	defer finishDelegatedCall(state)
 	rw.WriteHeaderNow()
 }
+
 func (w *opsCaptureWriter) Status() int {
 	state, rw := w.lockActive()
 	if state == nil {
@@ -389,6 +392,7 @@ func (w *opsCaptureWriter) Status() int {
 	defer state.mu.RUnlock()
 	return rw.Status()
 }
+
 func (w *opsCaptureWriter) Size() int {
 	state, rw := w.lockActive()
 	if state == nil {
@@ -397,6 +401,7 @@ func (w *opsCaptureWriter) Size() int {
 	defer state.mu.RUnlock()
 	return rw.Size()
 }
+
 func (w *opsCaptureWriter) Written() bool {
 	state, rw := w.lockActive()
 	if state == nil {
@@ -405,6 +410,7 @@ func (w *opsCaptureWriter) Written() bool {
 	defer state.mu.RUnlock()
 	return rw.Written()
 }
+
 func (w *opsCaptureWriter) Flush() {
 	state, rw := w.beginDelegatedCall()
 	if state == nil {
@@ -414,6 +420,7 @@ func (w *opsCaptureWriter) Flush() {
 	defer finishDelegatedCall(state)
 	rw.Flush()
 }
+
 func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	state, rw := w.beginDelegatedCall()
 	if state == nil {
@@ -423,6 +430,7 @@ func (w *opsCaptureWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	defer finishDelegatedCall(state)
 	return rw.Hijack()
 }
+
 func (w *opsCaptureWriter) CloseNotify() <-chan bool {
 	state, rw := w.lockActive()
 	if state == nil {
@@ -433,6 +441,7 @@ func (w *opsCaptureWriter) CloseNotify() <-chan bool {
 	defer state.mu.RUnlock()
 	return rw.CloseNotify()
 }
+
 func (w *opsCaptureWriter) Pusher() http.Pusher {
 	state, rw := w.lockActive()
 	if state == nil {
@@ -741,6 +750,9 @@ func OpsErrorLoggerMiddleware(ops *opscore.OpsService, queue OpsErrorLogQueue, a
 		status := c.Writer.Status()
 		body := w.capturedBytes()
 		parsed := parseOpsErrorResponse(body)
+		if isOpsPureCallerCancellation(c, status) {
+			parsed = parsedOpsError{ErrorType: "api_error", Message: "context canceled"}
+		}
 		if !parsed.StreamFailure {
 			if terminal, ok := w.capturedTerminalError(); ok {
 				parsed = terminal
@@ -1702,7 +1714,17 @@ func guessPlatformFromPath(path string) string {
 }
 
 // classifyOpsErrorLog 汇总上游错误上下文与本地路由标记，生成统一的 Ops 统计口径。
+// isOpsPureCallerCancellation 不覆盖已经观察到的真实上游或流式失败。
+func isOpsPureCallerCancellation(c *gin.Context, status int) bool {
+	return status == StatusClientClosedRequest && c != nil && c.Request != nil &&
+		errors.Is(c.Request.Context().Err(), context.Canceled) &&
+		!hasOpsUpstreamErrorContext(c) && len(GetOpsStreamErrors(c)) == 0
+}
+
 func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status int) (phase string, isBusinessLimited bool, errorOwner string, errorSource string) {
+	if isOpsPureCallerCancellation(c, status) {
+		return "request", true, "client", "client_request"
+	}
 	return opscore.ClassifyRequestError(opscore.ErrorClassificationInput{
 		Type: errType, Message: message, Code: code, Status: status,
 		RoutingCapacityLimited:       isOpsRoutingCapacityLimited(c),

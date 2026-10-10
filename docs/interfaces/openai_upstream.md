@@ -254,3 +254,5 @@ API Key passthrough 池模式会把 `pool_mode_retry_status_codes` 命中的 HTT
 一旦真实输出开始，网关不得重放请求或切换账号。最终错误还可命中[网关错误响应策略](gateway_error_policy.md)，但规则不会把失败结算成成功。排障应同时检查账号类型、required transport/capability、客户端限制、privacy status、模型映射、quota reset、代理/TLS 和 attempt 记录。
 
 相关文档：[网关请求生命周期](../architecture/gateway_request_lifecycle.md)、[账号调度与缓存一致性](../architecture/account_scheduling_and_cache.md)、[模型目录与市场](model_catalog_and_marketplace.md)。
+
+客户端取消的验收补充：确认调用方 context 已取消且错误为 context.Canceled 时，不先记录供应商故障，不补写通用502，也不提交账号失败样本。未输出时访问日志保留499；错误监测遵守现有取消过滤设置，保留时归为客户端请求且排除服务SLA。已有真实上游或流式错误不得被取消状态覆盖。

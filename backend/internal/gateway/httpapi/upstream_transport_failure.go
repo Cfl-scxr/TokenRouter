@@ -25,6 +25,10 @@ func (p *UpstreamTransportFailure) Handle(ctx context.Context, c *gin.Context, t
 	if err == nil {
 		return nil
 	}
+	// 已确认的客户端取消不是上游故障，不能先写供应商错误再退出。
+	if errors.Is(err, context.Canceled) && FailoverClientGone(c) {
+		return err
+	}
 	safe := logredact.SanitizeUpstreamQueries(err.Error())
 	platform, name := "", ""
 	var id int64

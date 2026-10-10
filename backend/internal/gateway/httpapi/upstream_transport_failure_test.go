@@ -106,7 +106,6 @@ func (r *openAITransportAccountRepoStub) SetTempUnschedulable(_ context.Context,
 }
 
 func newOpenAITransportErrTestContext() (*gin.Context, *httptest.ResponseRecorder) {
-
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -185,11 +184,17 @@ func TestHandleOpenAIUpstreamTransportError_WrappedContextCanceledNoFailover(t *
 func TestHandleOpenAIUpstreamTransportError_RecordsOllamaActivityOnly(t *testing.T) {
 	deferred, activity := gatewaytestkit.DeferredActivityRecorder(t)
 	svc := transportHealthFixture(&openAITransportAccountRepoStub{}, deferred)
-	ollama := &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 501, Name: "ollama-cloud", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"}},
+	ollama := &gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 501, Name: "ollama-cloud", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		},
 	}
-	other := &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 502, Name: "openai-official", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"}},
+	other := &gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 502, Name: "openai-official", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"},
+		},
 	}
 	c, _ := newOpenAITransportErrTestContext()
 
@@ -207,8 +212,11 @@ func TestHandleOpenAIUpstreamTransportError_RecordsOllamaActivityOnly(t *testing
 func TestHandleOpenAIUpstreamTransportError_ContextCanceledSkipsOllamaActivity(t *testing.T) {
 	deferred, activity := gatewaytestkit.DeferredActivityRecorder(t)
 	svc := transportHealthFixture(&openAITransportAccountRepoStub{}, deferred)
-	ollama := &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 503, Name: "ollama-canceled", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"}},
+	ollama := &gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 503, Name: "ollama-canceled", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		},
 	}
 	c, _ := newOpenAITransportErrTestContext()
 
@@ -224,11 +232,17 @@ func TestHandleOpenAIUpstreamTransportError_ContextCanceledSkipsOllamaActivity(t
 func TestHandleOpenAIAccountUpstreamError_RecordsOllamaActivityOnly(t *testing.T) {
 	deferred, activity := gatewaytestkit.DeferredActivityRecorder(t)
 	svc := transportHealthFixture(nil, deferred)
-	ollama := &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 504, Name: "ollama-429", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"}},
+	ollama := &gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 504, Name: "ollama-429", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "k-ollama", "base_url": "https://ollama.com"},
+		},
 	}
-	other := &gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 505, Name: "openai-429", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
-		Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"}},
+	other := &gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 505, Name: "openai-429", Platform: capability.PlatformOpenAI, Type: capability.AccountTypeAPIKey,
+			Credentials: map[string]any{"api_key": "k-openai", "base_url": "https://api.openai.com"},
+		},
 	}
 
 	_ = gatewayprovider.ApplyOpenAIResponseHealth(context.Background(), svc.Output.Health, ollama, http.StatusTooManyRequests, http.Header{}, []byte(`{"error":{"message":"rate"}}`), false, "gpt-test").StopScheduling
@@ -256,4 +270,17 @@ func transportHealthFixture(store *openAITransportAccountRepoStub, deferred *acc
 		health.Store = store
 	}
 	return &GrokExecutor{Failure: &UpstreamTransportFailure{Health: health}, Output: &OpenAIResponseOutput{Health: &accountprovider.OpenAIResponseHealth{Runtime: state, Deferred: deferred}}}
+}
+
+func TestTransportCallerCancellationDoesNotRecordProviderFailure(t *testing.T) {
+	c, rec := newOpenAITransportErrTestContext()
+	ctx, cancel := context.WithCancel(context.Background())
+	c.Request = c.Request.WithContext(ctx)
+	cancel()
+	failure := &UpstreamTransportFailure{}
+	err := failure.Handle(ctx, c, nil, fmt.Errorf("request: %w", context.Canceled), false)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, StatusClientClosedRequest, c.Writer.Status())
+	require.False(t, hasOpsUpstreamErrorContext(c))
+	require.Empty(t, rec.Body.String())
 }
