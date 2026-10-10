@@ -94,6 +94,9 @@ type StreamingResult struct {
 }
 
 func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream.OutputContext, options StreamOptions, startTime time.Time, originalModel, mappedModel, reasoningEffort string) (observed *StreamingResult, failure error) {
+	// 调用方取消时解除阻塞读取，同步和异步分支使用相同的取消边界。
+	stopCancellation := context.AfterFunc(ctx, func() { _ = resp.Body.Close() })
+	defer stopCancellation()
 	firstOutputTimeout := options.FirstOutputTimeout
 	guardFirstOutput := firstOutputTimeout > 0
 	stageFirstOutput := options.StageFirstOutput
@@ -251,6 +254,7 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 	errorEventSent := false
 	clientDisconnected := false // 客户端断开后继续 drain 上游以收集 usage
 	sawTerminalEvent := false
+	completedResponseObserved := false
 	sawFailedEvent := false
 	safetyTerminalCode := ""
 	sawBareError := false
@@ -449,6 +453,9 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 		return resultWithUsage(), nil
 	}
 	handleScanErr := func(scanErr error) (*StreamingResult, error, bool) {
+		if ctx.Err() != nil && !sawTerminalEvent {
+			scanErr = ctx.Err()
+		}
 		if scanErr == nil {
 			return nil, nil, false
 		}
@@ -540,6 +547,9 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 				suppressCurrentEvent = true
 			}
 			options.Observe(dataBytes, eventType)
+			if eventType == "response.completed" || eventType == "response.done" {
+				completedResponseObserved = true
+			}
 			// 初始上游 data 的 type 只解析一次：原始值保持终止事件的精确匹配，规范化值供后续分支复用。
 			if options.OpenAIStreamEventIsTerminalWithType(data, eventType) {
 				sawTerminalEvent = true
@@ -856,6 +866,10 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 			}
+			if completedResponseObserved && !eventInProgress {
+				_ = resp.Body.Close()
+				return finalizeStream()
+			}
 		}
 		if result, err, done := handleScanErr(documentScanner.Err()); done {
 			return result, err
@@ -934,6 +948,15 @@ func ReadStreamingResponse(ctx context.Context, resp *http.Response, c *upstream
 			if streamEarlyErr != nil {
 				return resultWithUsage(), streamEarlyErr
 			}
+			// 完成帧交付后立即结束本次尝试，不能继续等待上游关闭连接。
+			if completedResponseObserved && !eventInProgress {
+				_ = resp.Body.Close()
+				return finalizeStream()
+			}
+
+		case <-ctx.Done():
+			_ = resp.Body.Close()
+			return resultWithUsage(), ctx.Err()
 
 		case <-intervalCh:
 			if failureDelivered {

@@ -178,6 +178,9 @@ WS 报文、模型字段恢复及 usage 解析由 `protocol/openai` 拥有；Ope
 
 Responses HTTP/SSE 同样区分结构进度与可见输出：`response.created`、空 reasoning item 等进度可以提交当前 attempt、解除首输出超时并关闭 pre-output failover 窗口，但不记录 TTFT；非空文本/工具 delta、完整文本或工具参数、图片结果以及终态内实际 output 才开始 TTFT。只携带 usage 的终态必须保持 TTFT 未观测。
 
+Responses HTTP/SSE 的标准流收到完整 `response.completed` / `response.done` 帧后，即完成该次读取并关闭响应体，不再等待上游 TCP/HTTP 连接结束。完成帧中已经解析到的用量照常进入结算；不能在成功完成后再追加空闲超时。调用方取消时，标准 SSE 的请求上下文和阻塞响应读取一并取消，同步与异步读取分支均保留取消原因，不据此处罚账号。仅下游写失败但请求上下文尚未取消时，仍按原边界收集尾部用量；非流式、图片与后台任务的生命周期不随此变更。
+
+
 OAuth passthrough 的 Codex 请求可以省略 `instructions`，网关会按请求模型补入内置 Codex 基础指令；显式提供的非空字符串保持不变，空白或非字符串值仍在本地拒绝。该规则同时适用于 Responses SSE 与旧版 Compact 请求。
 
 Responses Lite 的报文重建与工具校验由 `upstream/openai` 唯一实现，执行适配负责按账号资格选择完整转换或仅禁用并行工具。

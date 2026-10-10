@@ -172,7 +172,13 @@ func (s *OpenAIResponsesExecutor) Forward(ctx context.Context, c *gin.Context, a
 	exchange := openai.HTTPExchangeOptions{
 		StartedAt:          startTime,
 		FirstOutputTimeout: firstOutputTimeout,
-		RequestContext:     gatewayprovider.DetachUpstreamContext,
+		RequestContext: func(requestCtx context.Context) (context.Context, context.CancelFunc) {
+			// SSE 的客户端取消必须传给当前尝试；非流式保留原有生命周期。
+			if reqStream {
+				return requestCtx, func() {}
+			}
+			return gatewayprovider.DetachUpstreamContext(requestCtx)
+		},
 		Build: func(ctx context.Context, body []byte) (*http.Request, error) {
 			return s.Requests.Build(ctx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI, tlsRouterMatch)
 		},
