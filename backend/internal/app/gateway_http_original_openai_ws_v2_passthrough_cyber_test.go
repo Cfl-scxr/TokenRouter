@@ -1,6 +1,13 @@
 package app
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
 	keyhttp "github.com/TokenFlux/TokenRouter/internal/apikey/httpapi"
 	billingtestkit "github.com/TokenFlux/TokenRouter/internal/billing/testkit"
 	httptestkit "github.com/TokenFlux/TokenRouter/internal/gateway/httpapi/testkit"
@@ -10,13 +17,6 @@ import (
 	"github.com/TokenFlux/TokenRouter/internal/infra/telemetry/logging"
 	"github.com/TokenFlux/TokenRouter/internal/scheduler"
 	"github.com/TokenFlux/TokenRouter/internal/usage"
-
-	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
 
 	"github.com/TokenFlux/TokenRouter/internal/apikey"
 	"github.com/TokenFlux/TokenRouter/internal/billing"
@@ -67,18 +67,21 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string) *ope
 	settingSvc := gatewaytestkit.RuntimeReaders(settingRepo)
 
 	groupID := int64(4301)
-	account := gatewayprovider.ExecutionAccount{Record: accountcore.Record{LoadLocation: time.LoadLocation, ID: 9951,
-		Name:        "openai-ws-passthrough-cyber",
-		Platform:    capability.PlatformOpenAI,
-		Type:        capability.AccountTypeAPIKey,
-		Status:      billing.StatusActive,
-		Schedulable: true,
-		Concurrency: 1,
-		Credentials: map[string]any{"api_key": "sk-test", "base_url": upstreamURL},
-		Extra: map[string]any{
-			"openai_apikey_responses_websockets_v2_enabled": true,
-			"openai_apikey_responses_websockets_v2_mode":    accountcore.OpenAIWSIngressModePassthrough,
-		}},
+	account := gatewayprovider.ExecutionAccount{
+		Record: accountcore.Record{
+			LoadLocation: time.LoadLocation, ID: 9951,
+			Name:        "openai-ws-passthrough-cyber",
+			Platform:    capability.PlatformOpenAI,
+			Type:        capability.AccountTypeAPIKey,
+			Status:      billing.StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"api_key": "sk-test", "base_url": upstreamURL},
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": true,
+				"openai_apikey_responses_websockets_v2_mode":    accountcore.OpenAIWSIngressModePassthrough,
+			},
+		},
 	}
 	cfg := &config.Config{}
 	cfg.RunMode = config.RunModeSimple
@@ -154,7 +157,6 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string) *ope
 }
 
 func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *testing.T) {
-
 	upstreamDone := make(chan struct{})
 	secondUpstreamFrame := make(chan []byte, 1)
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,13 +204,25 @@ func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *te
 	cancelRead()
 	require.NoError(t, err)
 	require.Equal(t, "response.failed", gjson.GetBytes(event, "type").String())
+	require.Equal(t, "cyber_policy", gjson.GetBytes(event, "response.error.code").String())
+	require.Equal(t, "Request blocked by upstream cyber-security policy", gjson.GetBytes(event, "response.error.message").String())
+
+	// 当前请求收到拒绝即结束，不等待或发送下一轮请求；读取关闭帧完成握手。
+	readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = harness.clientConn.Read(readCtx)
+	cancelRead()
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+	require.Equal(t, "Request blocked by upstream cyber-security policy", closeErr.Reason)
 
 	require.Eventually(t, func() bool {
-		warnings := harness.moderationRepo.cyberWarningSnapshot()
-		// WS 事件没有独立 HTTP 状态；上游 warning 回调按网关错误语义记录为 502。
-		return len(warnings) == 1 && warnings[0].WarningText == "blocked by upstream policy" &&
-			warnings[0].UpstreamStatus == http.StatusBadGateway
+		return len(harness.moderationRepo.cyberWarningSnapshot()) == 1
 	}, 3*time.Second, 10*time.Millisecond, "handler AfterTurn must call recordCyberPolicyIfMarked and write the risk-control event")
+	warning := harness.moderationRepo.cyberWarningSnapshot()[0]
+	require.Equal(t, "Request blocked by upstream cyber-security policy", warning.WarningText)
+	// 保留首个 WS 拒绝事件的传输观测值，后续回调不覆盖原有风控标记。
+	require.Equal(t, http.StatusOK, warning.UpstreamStatus)
 
 	keyCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	keyCtx.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(requestPayload))
@@ -221,20 +235,6 @@ func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *te
 		return findErr == nil && matched == blockKey
 	}, 3*time.Second, 10*time.Millisecond, "handler AfterTurn must write the cyber session block table")
 
-	writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
-	err = harness.clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","prompt_cache_key":"cyber-session-1","input":"follow-up"}`))
-	cancelWrite()
-	require.NoError(t, err)
-
-	readCtx, cancelRead = context.WithTimeout(context.Background(), 3*time.Second)
-	_, _, err = harness.clientConn.Read(readCtx)
-	cancelRead()
-	var closeErr coderws.CloseError
-	require.ErrorAs(t, err, &closeErr)
-	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
-	// closeOpenAIClientWS caps close reasons at 120 bytes; passthrough must expose
-	// the same client-visible prefix rather than dropping the close frame.
-	require.Equal(t, "该会话已被网络安全策略屏蔽，请开启新会话 / This session is blocked by cyber-security policy, please ", closeErr.Reason)
 	select {
 	case <-harness.handlerDone:
 	case <-time.After(3 * time.Second):
@@ -253,7 +253,6 @@ func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *te
 }
 
 func TestOpenAIResponsesWebSocketV2PassthroughNonCyberTurnAllowsFollowup(t *testing.T) {
-
 	upstreamDone := make(chan struct{})
 	secondUpstreamFrame := make(chan []byte, 1)
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
