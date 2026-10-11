@@ -53,12 +53,11 @@ func newOpenAIExecutionAndSelectionFixture(
 ) (*gatewayExecutionFixture, *selection.Compatible, *gatewayhttp.RequestCredentialExecutor) {
 	if modelTransient ==
 		nil {
-		modelTransient = provideSelectionModelTransient()
+		modelTransient = provideSelectionModelTransient(cfg)
 	}
 	if proxyCircuit ==
 		nil {
-		proxyCircuit =
-			provideSelectionProxyCircuit(cfg)
+		proxyCircuit = provideSelectionProxyCircuit(cfg)
 	}
 	if stateStore == nil {
 		stateStore = session.NewOpenAIWSStateStore(cache, gatewayprovider.LogOpenAIWSModeInfo)

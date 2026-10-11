@@ -166,3 +166,19 @@ func TestOpenAIModelTransient_StateIsBoundedAndConcurrencySafe(t *testing.T) {
 
 	assert.LessOrEqual(t, state.size(), maxEntries)
 }
+
+// 关闭瞬态冷却后，连续失败仍可追踪，但不能把唯一渠道拦在本地。
+func TestOpenAIModelTransient_DisabledCooldownRetainsStatistics(t *testing.T) {
+	state := NewModelTransientStateWithoutCooldown(128)
+	now := time.Now()
+	for i := 1; i <= 10; i++ {
+		at := now.Add(time.Duration(i) * time.Second)
+		decision := state.RecordFailure(35, "gpt-5.5", at)
+		require.Equal(t, i, decision.FailureStreak)
+		require.Zero(t, decision.Cooldown)
+		require.True(t, decision.BlockUntil.IsZero())
+		require.False(t, state.IsBlocked(35, "gpt-5.5", at))
+	}
+	state.RecordSuccess(35, "gpt-5.5")
+	require.Equal(t, 1, state.RecordFailure(35, "gpt-5.5", now.Add(time.Minute)).FailureStreak)
+}

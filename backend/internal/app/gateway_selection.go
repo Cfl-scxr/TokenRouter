@@ -65,7 +65,10 @@ func selectionOptions(cfg *config.Config) selection.Options {
 }
 
 // provideSelectionModelTransient 由执行反馈与选号共同持有一个模型瞬态状态。
-func provideSelectionModelTransient() *account.ModelTransientState {
+func provideSelectionModelTransient(cfg *config.Config) *account.ModelTransientState {
+	if cfg != nil && cfg.Gateway.ModelTransientCooldownDisabled {
+		return account.NewModelTransientStateWithoutCooldown(0)
+	}
 	return account.NewModelTransientState(0)
 }
 

@@ -851,6 +851,8 @@ type GatewayConfig struct {
 	Live GatewayLiveConfig `mapstructure:"live"`
 	// AdvancedScheduler: 跨平台高级调度器配置。
 	AdvancedScheduler GatewayAdvancedSchedulerConfig `mapstructure:"advanced_scheduler"`
+	// ModelTransientCooldownDisabled 让外层网关统一等待，避免瞬时失败重复停调渠道。
+	ModelTransientCooldownDisabled bool `mapstructure:"model_transient_cooldown_disabled"`
 	// OpenAIHTTP2: OpenAI HTTP 上游协议策略（默认启用 HTTP/2，可按代理能力回退 HTTP/1.1）
 	OpenAIHTTP2 GatewayOpenAIHTTP2Config `mapstructure:"openai_http2"`
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
@@ -2273,6 +2275,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.advanced_scheduler.score_weights.previous_response", 5.0)
 	viper.SetDefault("gateway.advanced_scheduler.score_weights.session_sticky", 3.0)
 	// OpenAI HTTP 上游协议策略
+	viper.SetDefault("gateway.model_transient_cooldown_disabled", false)
 	viper.SetDefault("gateway.openai_http2.enabled", true)
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)

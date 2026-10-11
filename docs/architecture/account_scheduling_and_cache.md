@@ -56,7 +56,7 @@ OpenAI/Grok 是通用核心的能力适配者：在高级分组中，OpenAI 额�
 
 Codex 自动审查的父线程亲缘只接受 `codex-auto-review` 模型，以及 Header/metadata 中无冲突的 `guardian`/`review` 声明和父线程 ID。`gateway/clientmeta` 解释这些字符串，HTTP 适配提取 Header 并复用 scheduler 的会话散列算法，`requeststate` 只保存本次请求的当前/旧散列。查询仍限定于当前分组的粘性命名空间，子请求不能覆盖父绑定；普通模型、缺失或冲突线索不建立亲缘，也不提供身份授权。
 
-账号与模型的短暂失败状态由 `account.ModelTransientState` 持有，网关调用点沿用同一实例；模型先完成平台规范化，再记录和查询。首次失败只计数，第二次冷却 10 秒，连续三次及以上冷却 45 秒，成功清零；30 分钟状态保留窗口与容量上限保持，进程重启不恢复这些内存状态。
+账号与模型的短暂失败状态由 `account.ModelTransientState` 持有，网关调用点沿用同一实例；模型先完成平台规范化，再记录和查询。首次失败只计数，第二次冷却 10 秒，连续三次及以上冷却 45 秒，成功清零。设置 `gateway.model_transient_cooldown_disabled=true` 后，继续记录连续失败，但不再因这些临时错误阻止账号模型参与选号，等待和重试由外层请求控制；该设置不改变人工禁用、凭据错误和上游明确限流。30 分钟状态保留窗口与容量上限保持，进程重启不恢复这些内存状态。
 
 选择适配通过只读账号端口和 `scheduler/rediscache.SnapshotReader` 获取候选或完整目标；完整记录解码留在 Redis Adapter，评分与排序只接收无凭据投影。每次选择保留自己的关联表，同 ID 的快照、fresh 与数据库重检记录不会相互覆盖。app 直接注入进程 Options、反馈、参数缓存、会话与配额拥有者。普通 Grok 免费层与高级 picker 的缓存作用域仍分别保留。
 

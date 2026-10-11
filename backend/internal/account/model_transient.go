@@ -41,9 +41,10 @@ type ModelTransientDecision struct {
 // ModelTransientState 保存账号与模型组合的短暂失败状态，
 // 并通过容量上限避免异常模型名造成内存无界增长。
 type ModelTransientState struct {
-	mu         sync.Mutex
-	entries    map[openAIAccountModelKey]openAIAccountModelTransientEntry
-	maxEntries int
+	mu               sync.Mutex
+	entries          map[openAIAccountModelKey]openAIAccountModelTransientEntry
+	maxEntries       int
+	cooldownDisabled bool
 }
 
 // NewModelTransientState 按原容量初始化唯一的账号模型失败状态。
@@ -55,6 +56,13 @@ func NewModelTransientState(maxEntries int) *ModelTransientState {
 		entries:    make(map[openAIAccountModelKey]openAIAccountModelTransientEntry),
 		maxEntries: maxEntries,
 	}
+}
+
+// NewModelTransientStateWithoutCooldown 保留失败统计，由外层请求控制等待和重试。
+func NewModelTransientStateWithoutCooldown(maxEntries int) *ModelTransientState {
+	state := NewModelTransientState(maxEntries)
+	state.cooldownDisabled = true
+	return state
 }
 
 // NormalizeTransientModel 规范化已映射的上游模型，拒绝过长输入。
@@ -109,9 +117,9 @@ func (s *ModelTransientState) RecordFailure(accountID int64, model string, now t
 	// 首次失败只计数，第二次开始冷却，连续三次及以上使用较长冷却时间。
 	cooldown := time.Duration(0)
 	switch {
-	case entry.failureStreak >= 3:
+	case !s.cooldownDisabled && entry.failureStreak >= 3:
 		cooldown = openAIModelTransientLongCooldown
-	case entry.failureStreak == 2:
+	case !s.cooldownDisabled && entry.failureStreak == 2:
 		cooldown = openAIModelTransientShortCooldown
 	}
 	if cooldown > 0 {

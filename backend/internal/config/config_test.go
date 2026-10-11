@@ -2688,3 +2688,11 @@ func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
 		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 	}
 }
+
+func TestLoadModelTransientCooldownDisabledFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_MODEL_TRANSIENT_COOLDOWN_DISABLED", "true")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.ModelTransientCooldownDisabled)
+}

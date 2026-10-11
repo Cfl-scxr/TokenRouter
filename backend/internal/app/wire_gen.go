@@ -218,7 +218,7 @@ func initializeApplication(ctx context.Context, cfg *config.Config, info BuildIn
 	tokenCacheInvalidator := provideTokenCacheInvalidator(accessTokenCache, qoderTokenProvider)
 	appAccountHealthRuntime := provideAccountHealthRuntime(accountStore, tempUnschedCache, cfg, accountRuntimeSettings, timeoutCounterCache, openAI403CounterCache, tokenCacheInvalidator, runtimeBlockState)
 	upstreamHealth := provideUpstreamHealth(appAccountHealthRuntime)
-	modelTransientState := provideSelectionModelTransient()
+	modelTransientState := provideSelectionModelTransient(cfg)
 	wheel := timingwheel.New()
 	deferredService := provideAccountDeferred(accountStore, wheel)
 	openAIResponseHealth := provideOpenAIResponseHealth(upstreamHealth, runtimeBlockState, modelTransientState, deferredService)
