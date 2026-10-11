@@ -16,7 +16,7 @@
 
 | 工具 | 当前来源 | 当前约束 |
 | --- | --- | --- |
-| Go | `backend/go.mod`、CI | `1.27.0` |
+| Go | `backend/go.mod`、CI | `1.27.2` |
 | Node.js | `.github/workflows/backend-ci.yml` | `20` |
 | pnpm | CI 与根 Makefile | `9`；根命令默认使用 `npx --yes pnpm@9` |
 | golangci-lint | `.golangci-version` | 本地与 CI 固定同一完整版本，配置在 `backend/.golangci.yml` |
@@ -126,7 +126,7 @@ Ent schema 不是生产迁移器。数据库权威变更仍须新增 `backend/mi
 
 ```bash
 # 受影响包
-(cd backend && GOTOOLCHAIN=go1.27.0 go test ./internal/account/... ./internal/routing/... ./internal/egress/...)
+(cd backend && GOTOOLCHAIN=go1.27.2 go test ./internal/account/... ./internal/routing/... ./internal/egress/...)
 
 # 架构检查覆盖全部标签，不需要重复按标签执行
 make -C backend test-architecture
@@ -212,3 +212,11 @@ npx --yes pnpm@9 --dir frontend run build
 备份/维护验证只对隔离 PostgreSQL、本地 S3/HTTP 夹具及临时可执行文件操作。恢复至少覆盖真实成功提交、SQL 失败回滚、输入中断及取消；系统锁覆盖同业务 ID 的不同认领代次。二进制替换测试不得使用测试进程或部署实例的真实路径。初始化与两个维护命令应验证退出前释放连接，并保持 Wire 可重复生成、Ent 与已发布 SQL 不变。
 
 相关文档：[项目总览](../project_overview.md)、[系统架构](../architecture/system_architecture.md)、[配置边界](../interfaces/configuration.md)、[部署与数据库迁移](deployment_and_migrations.md)、[运维目录](index.md)。
+
+## 2026-10-11 依赖收尾
+
+本轮将 Go 工具链更新到 1.27.2，并更新上游传输相关的 x/net、crypto、compress 和 gRPC 依赖。x/tools 使用 0.52.0，以兼容 Go 1.27 的导出格式；旧工具报“export data version 5”时不能通过删除 schema 验收来绕过。下载依赖可使用本机代理；执行模拟 HTTP 端点测试时移除代理环境变量，防止阿里云 SDK 将本机测试请求转发到代理。
+
+调用记录的 Excel 导出从已停止维护的 npm xlsx 0.18.5 换成 write-excel-file 4.1.1，保留原表头、列值、分页与文件名。实际生成文件验证了中文、数字、空单元格和以等号开头的普通文本；取消后不触发下载。生产依赖 audit 从33条降到0条，旧例外已移除。
+
+Go 全仓测试通过，源码和嵌入前端的新二进制均完成 govulncheck 1.8.0 扫描。GO-2026-5932 只在模块级提示未维护的 openpgp；本项目未导入该包，未发现 package/symbol 可达命中。此记录不表示所有未来风险均已消除。

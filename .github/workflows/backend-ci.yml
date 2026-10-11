@@ -36,7 +36,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.27.0'
+          go version | grep -q 'go1.27.2'
       - name: Unit tests
         working-directory: backend
         run: make test-unit
@@ -94,7 +94,7 @@ jobs:
             tools/architecture/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.27.0'
+          go version | grep -q 'go1.27.2'
       - name: Architecture checks
         run: make -C backend test-architecture
       - name: Read golangci-lint version
